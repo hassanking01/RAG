@@ -5,6 +5,7 @@ build/
 dist/
 wheels/
 *.egg-info
-
+*vllm-0.10.1/
 # Virtual environments
 .venv
+datasets_public/
