@@ -1,7 +1,9 @@
-VENV= /home/hahchtar/goinfre/RAG/.venv
+VENV= /home/hahchtar/goinfre/RAG/
 run:
 	@uv run -m src 
 install:
+	
 	mkdir -p $(VENV)
-	ln -s $(VENV) .venv
+	uv venv "$(VENV)/.venv"
+	ln -s "$(VENV)/.venv" .venv
 	uv sync

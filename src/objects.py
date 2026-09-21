@@ -1,4 +1,5 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+import uuid 
 from typing import List
 class MinimalSource(BaseModel):
     file_path: str
@@ -16,7 +17,6 @@ class AnsweredQuestion(UnansweredQuestion):
 
 class RagDataset(BaseModel):
     rag_questions: List[AnsweredQuestion | UnansweredQuestion]
-    question_id: str
 
 class MinimalSearchResults(BaseModel):
     question: str
