@@ -1,85 +1,26 @@
-import fire
+import fire, json
+from .chunker import Chunker
 from rich.traceback import install
-import bm25s
-# from rich import print
 from pathlib import Path
-from langchain_text_splitters import RecursiveCharacterTextSplitter, Language
-from enum import Enum
-from .objects import MinimalSource, MinimalSearchResults, MinimalSource, StudentSearchResults, RagDataset, StudentSearchResultsAndAnswer
-import json
+from .objects import MinimalSource, MinimalSearchResults, MinimalSource, StudentSearchResults, RagDataset, StudentSearchResultsAndAnswer, MinimalAnswer, AnsweredQuestion
 from tqdm import tqdm
 from .model import llm_model
-class Chunk(MinimalSource):
-    content: str
-install()
-
+from .lexical import BM25
+from .semantic import VectorDb
 class RAG:
     def __init__(self):
         self.raw_path = Path("/home/hahchtar/Desktop/student/RAG/data/raw/vllm-0.10.1")
-        self.bm25 = bm25s.BM25()
-        self.is_print_search= True
-        self.file_map = {
-            "py": Language.PYTHON,
-            "txt": Language.MARKDOWN,
-            "md": Language.MARKDOWN,
-            "cpp": Language.CPP,
-            "c": Language.C
-        }
-        self.is_print_answer = True
-        self.retriever = bm25s.BM25()
         self.processed_path = self.raw_path.parent.parent / "processed"
-        self.bm25_index_folder = self.processed_path / "bm25_index"
-        self.chunks_json = self.processed_path / "chunks.json"
-    def is_valid_file(self, file: Path):
-        file_extension = file.name.split(".")[-1]
-        return file_extension in self.file_map
-    def get_file_lang(self, file: Path) -> Language:
-        file_extension = file.name.split(".")[-1]
-        return self.file_map[file_extension]        
+        self.chunker = Chunker(self.processed_path)
+        self.lexical = BM25(self.processed_path)
+        self.semantic = VectorDb(self.processed_path, self.chunker.save_path)
     def index(self, max_chunk_size: int = 2000):
-        chunks: list[Chunk] = []
-        files = []
-        
-        def get_files(folder: Path):
-            nonlocal chunks
-            for file in folder.glob("*"):
-                if file.is_file() and self.is_valid_file(file):
-                    language = self.get_file_lang(file)
-                    spliter = RecursiveCharacterTextSplitter.from_language(
-                        language=language,
-                        chunk_size=max_chunk_size,
-                        chunk_overlap=int(max_chunk_size * 0.05)
-                    )
-                    file_text = file.read_text()
-                    strings = spliter.split_text(file_text)
-                    for string in strings:
-                        index = file_text.index(string)
-                        chunks += [
-                            Chunk(
-                                file_path=str(file),
-                                content=string,
-                                first_character_index=index,
-                                last_character_index=index + len(string)
-                            )
-                        ]
-                elif file.is_dir():
-                    get_files(file)
-
-        get_files(self.raw_path)
-        with open(self.chunks_json, "w") as file:
-            json.dump(
-                [chunk.model_dump(mode="json") for chunk in chunks],
-                file,
-                indent=4
-            )
-        corpus_tokens = bm25s.tokenize([chunk.content for chunk in chunks])
-        self.retriever.index(corpus_tokens)
-        if not self.processed_path.exists():
-            self.processed_path.mkdir()
-        self.retriever.save(self.bm25_index_folder)
-            
-
+        self.chunker.chunk(self.raw_path, max_chunk_size)
+        self.lexical.index(self.chunker.save_path)
+        self.semantic.index()
     def search(self, query: str, k: int = 10):
+        self.semantic.search(query, k)
+        exit()
         self.retriever = bm25s.BM25.load(self.bm25_index_folder)
         chunks = json.loads(self.chunks_json.read_text())
         chunks: list[Chunk] = [ Chunk(**data) for data in chunks]
@@ -124,15 +65,30 @@ class RAG:
             file_text = file.read_text()
             context += f"- {file_text[source.first_character_index:source.last_character_index]}\n"
         answer = model.Generate_answer(query, context)
-        if self.is_print_answer:
-            print(answer)
-        return answer
+        
+        return MinimalAnswer(
+            question=minimal_source.question,
+            retrieved_sources=minimal_source.retrieved_sources,
+            answer=answer
+            )
 
     def answer_dataset(self, student_search_results_path: str, save_directory: str):
         file = Path(student_search_results_path)
-        ragdataset = RagDataset(**json.loads(file.read_text()))
-        # for question in ragdataset.rag_questions:
-        #     answer = self.answer
-
+        ragdataset_qustions = RagDataset(**json.loads(file.read_text()))
+        ragadataset_answers = RagDataset(rag_questions=[])
+        for Unanswerd_question in ragdataset_qustions.rag_questions:
+            result = self.answer(Unanswerd_question.question, 5)
+            answered = AnsweredQuestion(
+                question=Unanswerd_question.question,
+                sources=result.retrieved_sources,
+                answer=result.answer,
+            )
+            ragadataset_answers.rag_questions.append(answered)
+        with open(save_directory, "w") as file:
+            json.dump(
+                ragadataset_answers.model_dump(mode="json"),
+                file,
+                indent=4
+            )
 if "__main__" == __name__:
     result = fire.Fire(RAG)
