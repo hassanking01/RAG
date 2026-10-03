@@ -2,9 +2,9 @@ import fire, json
 from .chunker import Chunker
 from rich.traceback import install
 from pathlib import Path
-from .objects import MinimalSource, MinimalSearchResults, MinimalSource, StudentSearchResults, RagDataset, StudentSearchResultsAndAnswer, MinimalAnswer, AnsweredQuestion
+from .models import MinimalSource, MinimalSearchResults, MinimalSource, StudentSearchResults, RagDataset, StudentSearchResultsAndAnswer, MinimalAnswer, AnsweredQuestion
 from tqdm import tqdm
-from .model import llm_model
+from .LLM import llm_model
 from .lexical import BM25
 from .semantic import VectorDb
 class RAG:
@@ -12,14 +12,15 @@ class RAG:
         self.raw_path = Path("/home/hahchtar/Desktop/student/RAG/data/raw/vllm-0.10.1")
         self.processed_path = self.raw_path.parent.parent / "processed"
         self.chunker = Chunker(self.processed_path)
-        self.lexical = BM25(self.processed_path)
+        self.lexical = BM25(self.processed_path, self.chunker.save_path)
         self.semantic = VectorDb(self.processed_path, self.chunker.save_path)
     def index(self, max_chunk_size: int = 2000):
         self.chunker.chunk(self.raw_path, max_chunk_size)
         self.lexical.index(self.chunker.save_path)
         self.semantic.index()
     def search(self, query: str, k: int = 10):
-        self.semantic.search(query, k)
+        #self.semantic.search(query, k)
+        self.lexical.search(query, k)
         exit()
         self.retriever = bm25s.BM25.load(self.bm25_index_folder)
         chunks = json.loads(self.chunks_json.read_text())

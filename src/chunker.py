@@ -1,7 +1,7 @@
 from langchain_text_splitters import RecursiveCharacterTextSplitter, Language
 from pathlib import Path
 import tqdm, json
-from .objects import MinimalSource
+from .models import MinimalSource
 class Chunker:
     def __init__(
             self,

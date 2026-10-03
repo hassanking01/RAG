@@ -1,6 +1,6 @@
 from sentence_transformers import SentenceTransformer
 from pathlib import Path
-from .objects import MinimalSource
+from .models import MinimalSource
 import numpy, json
 class VectorDb:
     def __init__(
@@ -40,15 +40,12 @@ class VectorDb:
         numpy.savetxt(self.save_path.parent / "embeddings.tsv", result, delimiter="\t", fmt="%.6f")
     def search(self,query:str,  k: int):
         query_embedding = self.model.encode(query, show_progress_bar=True)
-        chunks: list[MinimalSource] = json.loads(self.chunks_path.read_text())
         embeddings = numpy.load(self.save_path)
-        embeddings = numpy.vstack((embeddings, query_embedding))
-        numpy.savetxt(self.save_path.parent / "embeddings.tsv", embeddings, delimiter="\t", fmt="%.6f")
-        import csv
-        with open("metadata.tsv", "a", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(["query", 0, 0])
-        exit()
+        chunks: list[MinimalSource] = [
+            MinimalSource(**data) 
+            for data in json.loads(self.chunks_path.read_text())
+        ]
+        
         scores = []
         for index, vector in enumerate(embeddings):
             score = numpy.sum((query_embedding - vector) ** 2)
