@@ -7,9 +7,10 @@ from tqdm import tqdm
 from .LLM import llm_model
 from .lexical import BM25
 from .semantic import VectorDb
+install()
 class RAG:
     def __init__(self):
-        self.raw_path = Path("/home/hahchtar/Desktop/student/RAG/data/raw/vllm-0.10.1")
+        self.raw_path = Path("data/raw/vllm-0.10.1")
         self.processed_path = self.raw_path.parent.parent / "processed"
         self.chunker = Chunker(self.processed_path)
         self.lexical = BM25(self.processed_path, self.chunker.save_path)

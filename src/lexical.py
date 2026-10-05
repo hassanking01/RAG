@@ -4,6 +4,7 @@ import bm25s, json
 from pathlib import Path
 from models import MinimalSource
 from collections import Counter
+import re
 class Tokens:
     def __init__(self, ids, vocab):
         ids: dict[int, list] = {}
@@ -17,7 +18,8 @@ class Tokens:
         if isinstance(documents, list):
             for index, document in enumerate(documents):
                 document = document.lower()
-                splited = document.split()
+                splited = re.findall(r"(?u)\b\w\w+\b", document)
+                splited = [part for  part in splited if part not in bm25s.stopwords.STOPWORDS_EN]
                 count = Counter(splited)
                 document_ids = []
                 for item in count:
@@ -40,13 +42,13 @@ if __name__ == "__main__":
         Path(data.file_path).read_text()[data.first_character_index:data.last_character_index]
         for data in chunks
     ]
-    # with open("bm25.json", "w") as file:
-    #     json.dump(
-    #         bm25s.tokenize(chunks).vocab,
-    #         file,
-    #         indent=4
-    #     )
-    Tokens.tokenize(chunks)
+    with open("bm25.json", "w") as file:
+        json.dump(
+            bm25s.tokenize(chunks).vocab,
+            file,
+            indent=4
+        )
+    # Tokens.tokenize(chunks)
     exit()
 
 
