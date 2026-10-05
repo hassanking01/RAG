@@ -6,15 +6,20 @@ from models import MinimalSource
 from collections import Counter
 import re
 class Tokens:
-    def __init__(self, ids, vocab):
-        ids: dict[int, list] = {}
-        vocab: dict[str, int] = {}
+    def __init__(self, ids, vocab, vocab_ids, tf, idf):
+        self.ids: dict[int, list] = ids
+        self.vocab: dict[str, int] = vocab
+        self.vocab_ids: dict[int, str] = vocab_ids
+        self.tf: dict[str, dict[int, int]]= tf
+        self.idf: dict[str, float] = idf
     @staticmethod
     def tokenize(documents: str | list[str]) -> Tokens:
         vocab: dict[str, int] = {}
         ids: dict[int, list] = {}
-        vocab_ids: dict[str, int] = {}
+        vocab_ids: dict[int, str] = {}
         counter = 0
+        tf = {}
+        idf = {}
         if isinstance(documents, list):
             for index, document in enumerate(documents):
                 document = document.lower()
@@ -23,32 +28,36 @@ class Tokens:
                 count = Counter(splited)
                 document_ids = []
                 for item in count:
-                    vocab.setdefault(item, 0)
-                    vocab[item] += count[item]
-                    if not vocab_ids.get(item):
+                    if not vocab.get(item):
                         vocab_ids[item] = counter
                         counter += 1
+                    tf.setdefault(item, {})
+                    tf[item][index] = count[item]
+                    vocab.setdefault(item, 0)
+                    vocab[item] += count[item]
                     document_ids += [vocab_ids[item]]
                 ids[index] = document_ids
-        with open("r.json" , "w") as file:
-            json.dump(
-                vocab_ids,
-                file,
-                indent=4
-            )
+            import math
+            N = len(vocab)
+            for term in vocab:
+                df = len(tf[term])
+                idf[term] = math.log(1 + (N - df + 0.5) / (df + 0.5))
+            return Tokens(ids, vocab, vocab_ids,tf, idf)
+
 if __name__ == "__main__":
     chunks: list[MinimalSource] = [MinimalSource(**data) for data in json.loads(Path("data/processed/chunks/chunks.json").read_text())]
+    chunks = [chunk for chunk in chunks if chunk.file_path.endswith(".py")]
     chunks = [
         Path(data.file_path).read_text()[data.first_character_index:data.last_character_index]
         for data in chunks
     ]
-    with open("bm25.json", "w") as file:
-        json.dump(
-            bm25s.tokenize(chunks).vocab,
-            file,
-            indent=4
-        )
-    # Tokens.tokenize(chunks)
+    # with open("bm25.json", "w") as file:
+    #     json.dump(
+    #         bm25s.tokenize(chunks).vocab,
+    #         file,
+    #         indent=4
+    #     )
+    Tokens.tokenize(chunks)
     exit()
 
 
