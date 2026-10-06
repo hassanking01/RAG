@@ -5,7 +5,7 @@ from pathlib import Path
 from .models import MinimalSource, MinimalSearchResults, MinimalSource, StudentSearchResults, RagDataset, StudentSearchResultsAndAnswer, MinimalAnswer, AnsweredQuestion
 from tqdm import tqdm
 from .LLM import llm_model
-from .lexical import BM25
+from .lexical import MYBM25, Tokens
 from .semantic import VectorDb
 install()
 class RAG:
@@ -13,15 +13,30 @@ class RAG:
         self.raw_path = Path("data/raw/vllm-0.10.1")
         self.processed_path = self.raw_path.parent.parent / "processed"
         self.chunker = Chunker(self.processed_path)
-        self.lexical = BM25(self.processed_path, self.chunker.save_path)
+        # self.lexical = BM25(self.processed_path, self.chunker.save_path)
+        chunks: list[MinimalSource] = [ MinimalSource(**data) for data in json.loads(Path("data/processed/chunks/chunks.json").read_text())]
+        tokens = Tokens.tokenize([Path(file.file_path).read_text()[file.first_character_index:file.last_character_index] for file in chunks])
+        self.bm = MYBM25(tokens, chunks)
         self.semantic = VectorDb(self.processed_path, self.chunker.save_path)
     def index(self, max_chunk_size: int = 2000):
         self.chunker.chunk(self.raw_path, max_chunk_size)
-        self.lexical.index(self.chunker.save_path)
-        self.semantic.index()
+        # self.lexical.index(self.chunker.save_path)
+        # self.semantic.index()
     def search(self, query: str, k: int = 10):
+        results = self.bm.search(query, k)
+        chunks: list[MinimalSource] = [ MinimalSource(**data) for data in json.loads(Path("data/processed/chunks/chunks.json").read_text())]
+        minimal_source_list: list[MinimalSource] = []
+        for idx, score in results:
+            minimal_source_list += [
+                MinimalSource(
+                    file_path=chunks[idx].file_path,
+                    first_character_index=chunks[idx].first_character_index,
+                    last_character_index=chunks[idx].last_character_index
+                )
+            ]
+        return MinimalSearchResults(question=query, retrieved_sources=minimal_source_list)
         #self.semantic.search(query, k)
-        self.lexical.search(query, k)
+        # self.lexical.search(query, k)
         exit()
         self.retriever = bm25s.BM25.load(self.bm25_index_folder)
         chunks = json.loads(self.chunks_json.read_text())
@@ -32,8 +47,6 @@ class RAG:
         )
         minimal_source_list: list[MinimalSource] = []
         for idx in results[0]:
-            if self.is_print_search:
-                print(idx, chunks[idx].file_path, chunks[idx].first_character_index, chunks[idx].last_character_index)
             minimal_source_list += [
                 MinimalSource(
                     file_path=chunks[idx].file_path,
@@ -49,8 +62,8 @@ class RAG:
         result: list[MinimalSearchResults] = []
             
         for Unansweredquestion in tqdm(rag_dataset.rag_questions, desc="Processing data set"):
-            result += [self.search(Unansweredquestion.question, k)]
-        student_search = StudentSearchResults(k=k, search_results=result)
+            result += [self.search(Unansweredquestion.question, 1)]
+        student_search = StudentSearchResults(k=1, search_results=result)
         with open(save_directory, "w") as file:
             json.dump(
                 student_search.model_dump(mode="json"),

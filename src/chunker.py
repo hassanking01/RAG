@@ -19,7 +19,7 @@ class Chunker:
         files_progress = tqdm.tqdm(data_path.rglob("*"))
         chunks = []
         for file in files_progress:
-            if not self.is_valid_file(file):
+            if not self.is_valid_file(file) or "/tests/" in str(file):
                 continue
             files_progress.set_description(f"Chunking {file.name}:  ")
             language = self.get_file_lang(file)
