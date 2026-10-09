@@ -1,9 +1,11 @@
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
 
 class llm_model:
     def __init__(self, model_name: str = "Qwen/Qwen3-0.6B"):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(model_name)
+
     def Generate_answer(self, query: str, context):
         messages = [
             {
@@ -13,7 +15,7 @@ class llm_model:
                     "using the provided context from the user's files.\n"
                     "Only use information from the provided context. "
                     'If the context does not contain enough information, say "I don\'t know."'
-                )
+                ),
             },
             {
                 "role": "user",
@@ -24,8 +26,8 @@ class llm_model:
                     f"<question>\n"
                     f"{query}\n"
                     f"</question>"
-                )
-            }
+                ),
+            },
         ]
 
         ids = self.tokenizer.apply_chat_template(
@@ -34,15 +36,11 @@ class llm_model:
             add_generation_prompt=True,
             return_tensors="pt",
             enable_thinking=False,
-
         )
         output = self.model.generate(
             **ids,
             max_new_tokens=1000,
-            
         )
         return self.tokenizer.decode(
-            output.tolist()[0][len(ids["input_ids"][0]):],
-            skip_special_tokens=True
+            output.tolist()[0][len(ids["input_ids"][0]) :], skip_special_tokens=True
         )
-

@@ -1,176 +1,171 @@
 import json
-from pathlib import Path
-from collections import Counter
+import math
 import re
-from models import MinimalSource
+from collections import Counter
+from pathlib import Path
+from src.models import MinimalSource
+import pickle
+from .models import MinimalSource
+from .errors import Patherror
+from typing import cast
 
-
-
-
-
-
-
-STOPWORDS_EN = ['a', 'an', 'and', 'are', 'as', 'at', 'be', 'but', 'by', 'for', 'if', 'in', 'into', 'is', 'it', 'no', 'not', 'of', 'on', 'or', 'such', 'that', 'the', 'their', 'then', 'there', 'these', 'they', 'this', 'to', 'was', 'will', 'with']
-
-import bm25s
-class BM25:
-    def __init__(
-            self,
-            processed_path: Path = Path("data/processed"),
-            chunks_path: Path = Path("data/processed/chunks/chunks.json")
-        ):
-        self.chunks_path = chunks_path
-        self.save_path = processed_path / "lexical"
-        self.retriever =  bm25s.BM25()
-    def index(self, chunks_path: Path):
-        chunks: list[MinimalSource] = [
-            MinimalSource(**data) for data in json.loads(chunks_path.read_text())
-        ]
-        contents = [
-            Path(data.file_path).read_text()
-            [data.first_character_index:data.last_character_index]
-            for data in chunks
-        ]
-        corpus_tokens = bm25s.tokenize(contents)
-        self.retriever.index(corpus_tokens)
-        print(self.retriever.idf_method)
-        if not self.save_path.exists():
-            self.save_path.mkdir(parents=True)
-        self.retriever.save(self.save_path)
-    def search(self, query: str, k: int):
-        self.retriever = bm25s.BM25.load(self.save_path)
-        print(dir(self.retriever))
-        return
-        chunks: list[MinimalSource] = [
-            MinimalSource(**data)
-            for data in json.loads(self.chunks_path.read_text())
-        ]
-        results, scors = self.retriever.retrieve(
-            bm25s.tokenize(query),
-            k=k,
-        )
-        for result in results:
-            print(result)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+STOPWORDS_EN = [
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "but",
+    "by",
+    "for",
+    "if",
+    "in",
+    "into",
+    "is",
+    "it",
+    "no",
+    "not",
+    "of",
+    "on",
+    "or",
+    "such",
+    "that",
+    "the",
+    "their",
+    "then",
+    "there",
+    "these",
+    "they",
+    "this",
+    "to",
+    "was",
+    "will",
+    "with",
+]
 
 class Tokens:
-    def __init__(self, ids, vocab, vocab_ids, tf, idf):
-        self.ids: dict[int, list] = ids
+    def __init__(self, ids, vocab, tf, idf, docs_length):
+        self.ids: list[list[int]] = ids
+        self.docs_length: list[int] = docs_length
         self.vocab: dict[str, int] = vocab
-        self.vocab_ids: dict[int, str] = vocab_ids
-        self.tf: dict[str, dict[int, int]]= tf
-        self.idf: dict[str, float] = idf
+        self.tf: dict[int, dict[int, int]] = tf
+        self.idf: list[float] = idf
 
     @classmethod
-    def tokenize(cls, documents: str | list[str]) :
-        import math
+    def tokenize(cls, save_path: Path) -> Tokens:
+        chunks: list[MinimalSource] = [
+            MinimalSource(**data) for data in json.loads(save_path.read_text())
+        ]
+        documents = [
+            Path(chunk.file_path).read_text()[
+                chunk.first_character_index : chunk.last_character_index
+            ]
+            for chunk in chunks
+        ]
+
         vocab: dict[str, int] = {}
-        ids: dict[int, list] = {}
-        vocab_ids: dict[int, str] = {}
+        ids: list[list[int]] = []
+        docs_length: list[int] = []
         counter = 0
         tf = {}
-        idf = {}
-        if isinstance(documents, list):
-            for index, document in enumerate(documents):
-                document = document.lower()
-                splited = re.findall(r"(?u)\b\w\w+\b", document)
-                splited = [part for  part in splited if part not in STOPWORDS_EN]
-                count = Counter(splited)
-                document_ids = []
-                for item in count:
-                    if not vocab.get(item):
-                        vocab_ids[item] = counter
-                        counter += 1
-                    tf.setdefault(item, {})
-                    tf[item][index] = count[item]
-                    vocab.setdefault(item, 0)
-                    vocab[item] += count[item]
-                    document_ids += [vocab_ids[item]]
-                ids[index] = document_ids
-            N = len(ids)
-            for term in vocab:
-                df = len(tf[term])
-                idf[term] = math.log(1 + (N - df + 0.5) / (df + 0.5))
-            return cls(ids, vocab, vocab_ids,tf, idf)
-    @staticmethod
-    def get_tokens(query: str) -> list[str]:
-        splited = re.findall(r"(?u)\b\w\w+\b", query)
-        splited = [part for  part in splited if part not in STOPWORDS_EN]
-        return splited
+        idf: list[float] = []
 
-class MYBM25:
-    def __init__(self, tokens: Tokens, chunks: list[MinimalSource]):
-        self.tokens = tokens
-        self.chunks = chunks
-        self.index = {}
+        for index, document in enumerate(documents):
+            document = document.lower()
+            splited = re.findall(r"(?u)\b\w\w+\b", document)
+            splited = [part for part in splited if part not in STOPWORDS_EN]
+            count = Counter(splited)
+            length = 0
+            document_ids = []
+            for item in count:
+                token_id = -1
+                if item not in vocab:
+                    token_id = counter
+                    vocab[item] = token_id
+                    counter += 1
+                else:
+                    token_id = vocab[item]
+                tf.setdefault(token_id, {})
+                tf[token_id][index] = count[item]
+                length += count[item]
+                document_ids += [token_id]
+            ids.append(document_ids)
+            docs_length.append(length)
+        N = len(ids)
+        for _ , token_id in vocab.items():
+            df = len(tf[token_id])
+            idf.append(math.log(1 + (N - df + 0.5) / (df + 0.5)))
+        return cls(ids, vocab, tf, idf, docs_length)
+
+    @staticmethod
+    def get_tokens(query: str, tokenz: Tokens) -> list[int]:
+        query = query.lower()
+        splited = re.findall(r"(?u)\b\w\w+\b", query)
+        splited = [part for part in splited if part not in STOPWORDS_EN]
+        return [tokenz.vocab[term] for term in splited if term in tokenz.vocab]
+
+
+class BM25:
+    def __init__(
+        self,
+        processed_path: Path,
+        chunks_path: Path,
+        k1: float = 1.5,
+        b: float = 0.75,
+    ):
+        self._index = {}
+        self.save_path = processed_path / "lexical"
+        self.chunks_path = chunks_path
+        self.k1 = k1
+        self.b = b
+        self.loaded = False
+
+    def index(self) -> None:
+        self.tokens = Tokens.tokenize(self.chunks_path)
+        self.avgdl = self._calculate_avgdl()      
+        for index, doc in enumerate(self.tokens.ids):
+            self._index.setdefault(index, {})
+            for token_id in doc:
+                score = self._calculate_term_score(token_id, index)
+                self._index[index][token_id] = score
+        self.save()
+
+    def save(self):
+        if not self.save_path.exists():
+            self.save_path.mkdir(parents=True)
+        if self.save_path.is_file():
+            raise Patherror("the save dir for lexical is dir")
+        with open(self.save_path / "bm52.pkl","wb") as f:
+                pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
+    def load(self) -> BM25:
+        with open(self.save_path / "bm52.pkl", "rb") as f:
+            bm25 = pickle.load(f)
+        bm25 = cast(BM25, bm25)
+        bm25.loaded = True
+        return bm25
+    def _calculate_term_score(self, token_id: int, doc: int) -> float:
+        score = 0
+        D = self.tokens.docs_length[doc]
+        tf_qi = self.tokens.tf[token_id].get(doc, 0)
+        bast = tf_qi * (self.k1 + 1)
+        maqam = tf_qi + self.k1 * (1 - self.b + (self.b * (D / self.avgdl)))
+        score = self.tokens.idf[token_id] * (bast / maqam)
+        return score
+    def _calculate_avgdl(self) -> float:
+        return sum(self.tokens.docs_length) / len(self.tokens.ids)
 
     def search(self, query: str, k):
-        print(self.tokens.idf)
-        exit()
-        k1 = 1.5
-        b = 0.75
-        query = Tokens.get_tokens(query=query)
+        tokens = Tokens.get_tokens(query, self.tokens)
         scores = []
-        AVGDL = sum(len(self.tokens.ids[doc]) for doc in self.tokens.ids) / len(self.tokens.ids)
-        for index in self.tokens.ids:
-            score = []
-            for token in query:
-                if token not in self.tokens.vocab :
+        for doc in self._index:
+            score = 0
+            for token_id in tokens:
+                if token_id not in self._index[doc]:
                     continue
-                tf_qi = self.tokens.tf[token].get(index, 0)
-                bast = (tf_qi * (k1 + 1))
-                D = len(self.tokens.ids[index])
-                maqam = tf_qi + k1 * (1 - b + b * (D / AVGDL)) 
-                score += [self.tokens.idf[token] * (bast / maqam)]
-            scores += [[index, sum(score)]]
+                score += self._index[doc][token_id]
+            scores += [[doc, score]]
         scores = sorted(scores, key=lambda x: x[1], reverse=True)
         scores = scores[:k]
-        return scores                
-
-
-
-if __name__ == "__main__":
-    chunks: list[MinimalSource] = [ MinimalSource(**data) for data in json.loads(Path("data/processed/chunks/chunks.json").read_text())]
-    tokens = Tokens.tokenize([Path(file.file_path).read_text()[file.first_character_index:file.last_character_index] for file in chunks])
-    bm_ = BM25()
-    bm = MYBM25(tokens, chunks)
-    question = "What determines the values in cudagraph_inputs_embeds when capturing CUDA graph shapes in vLLM's ModelRunner?"
-    bm_.search(question, 1)
-    # print("-" * 100)
-    # bm.search(question, 1)
-
-
-
-
-
-
-
-
-
-
-
-
-
+        return [idx for idx, _ in scores]
