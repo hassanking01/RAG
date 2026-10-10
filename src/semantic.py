@@ -40,6 +40,7 @@ class VectorDb:
             self._embeddings = numpy.load(self.save_path)
             self._is_loaded = True
         scores = []
+
         for index, vector in enumerate(self._embeddings):
             score = numpy.sum((query_embedding - vector) ** 2)
             scores += [(score, index)]
