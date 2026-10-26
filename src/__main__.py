@@ -47,7 +47,6 @@ class RAG:
             edited = self.chunker.re_chunk(self.raw_path, max_chunk_size=max_chunk_size)
             self.lexical = self.lexical.load()
             self.lexical.re_index(edited)
-            exit()
 
     def search(self, query: str, k: int = 10):
         chunks: list[MinimalSource] = [

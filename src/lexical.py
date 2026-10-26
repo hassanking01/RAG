@@ -8,6 +8,7 @@ import pickle
 from .errors import Patherror
 from typing import cast
 from .enums import Filestatus
+from rich import print
 STOPWORDS_EN = [
     "a",
     "an",
@@ -45,13 +46,14 @@ STOPWORDS_EN = [
 ]
 
 class Tokens:
-    def __init__(self, ids, vocab, tf, idf, docs_length, counter):
+    def __init__(self, ids, vocab, tf, idf, docs_length, counter, files_history):
         self.ids: dict[str, list[int]] = ids
         self.docs_length: list[int] = docs_length
         self.vocab: dict[str, int] = vocab
         self.tf: dict[int, dict[str, int]] = tf
         self.idf: dict[int, float] = idf
         self.counter = counter
+        self.files_history: dict[str, list[str]] = files_history
 
     @classmethod
     def tokenize(cls, save_path: Path) -> Tokens:
@@ -63,13 +65,13 @@ class Tokens:
             ]
             for chunk in chunks
         ]
-
-        ids: dict[str, list[int]] = []
-        docs_length: dict[str, int] = []
+        files_history: dict[str, list[str]] = {}
+        ids: dict[str, list[int]] = {}
+        docs_length: dict[str, int] = {}
         vocab: dict[str, int] = {}
         counter = 0
-        tf: dict[int, dict[str, int]] = {}
-        idf: dict[int, float] = []
+        tf: dict[str, dict[str, int]] = {}
+        idf: dict[int, float] = {}
 
         for index, document in enumerate(documents):
             document = document.lower()
@@ -78,6 +80,7 @@ class Tokens:
             count = Counter(splited)
             length = 0
             token_ids = []
+            document_id = chunks[index]["id"]
             for item in count:
                 token_id = -1
                 if item not in vocab:
@@ -90,14 +93,31 @@ class Tokens:
                 tf[token_id][document_id] = count[item]
                 length += count[item]
                 token_ids += [token_id]
-            document_id = chunks[index]["id"]
+            file_name = chunks[index]["file_path"]
+            files_history.setdefault(file_name, [])
             ids[document_id] = token_ids
             docs_length[document_id] = length
+            files_history[file_name] += [document_id]
         N = len(ids)
         for _ , token_id in vocab.items():
             df = len(tf[token_id])
-            idf.append(math.log(1 + (N - df + 0.5) / (df + 0.5)))
-        return cls(ids, vocab, tf, idf, docs_length, counter)
+            idf[token_id] = math.log(1 + (N - df + 0.5) / (df + 0.5))
+        return cls(ids, vocab, tf, idf, docs_length, counter, files_history)
+
+    def delete_docs(self, file: str) -> None:
+        docs = self.files_history.pop(file, None)
+        if not docs:
+            return
+        for doc in docs:
+            for token_id in list(self.tf):
+                _ = self.tf[token_id].pop(doc, None)
+                if len(self.tf[token_id]) == 0:
+                    _ = self.tf.pop(token_id, None)
+                    _ = self.idf.pop(token_id)
+    def modifi_tokens(self, file: str) -> None:
+        pass
+    def add_tokens(self, file: str) -> None:
+        pass
 
     @staticmethod
     def get_tokens(query: str, tokenz: Tokens) -> list[int]:
@@ -123,17 +143,28 @@ class BM25:
         self.loaded = False
 
     def index(self) -> None:
+        print("indexing")
         self.tokens = Tokens.tokenize(self.chunks_path)
-        self.avgdl = self._calculate_avgdl()      
-        for doc_id, doc in self.tokens.ids.items():
-            self._index.setdefault(doc_id, {})
-            for token_id in doc:
-                score = self._calculate_term_score(token_id, doc_id)
-                self._index[doc_id][token_id] = score
+        self.avgdl = self._calculate_avgdl()
+        print(self.tokens.files_history)      
+        exit()
+        # for doc_id, doc in self.tokens.ids.items():
+        #     self._index.setdefault(doc_id, {})
+        #     for token_id in doc:
+        #         score = self._calculate_term_score(token_id, doc_id)
+        #         self._index[doc_id][token_id] = score
         self.save()
 
     def re_index(self, edited: dict[str, Filestatus]):
-        pass
+        for file, state in edited.items():
+            match state:
+                case Filestatus.DELETED:
+                    self.tokens.delete_docs(file)
+                case Filestatus.MODIFIED:
+                    self.tokens.modifi_tokens(file)
+                case Filestatus.ADDED:
+                    self.tokens.add_tokens(file)
+            
     def save(self):
         if not self.save_path.exists():
             self.save_path.mkdir(parents=True)
