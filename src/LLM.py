@@ -6,14 +6,14 @@ class llm_model:
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(model_name)
 
-    def Generate_answer(self, query: str, context):
+    def Generate_answer(self, query: str, context) -> str:
         messages = [
             {
                 "role": "system",
                 "content": (
                     "You are a helpful assistant that answers questions "
                     "using the provided context from the user's files.\n"
-                    "Only use information from the provided context. "
+                    "Only use information from the p ovided context. "
                     'If the context does not contain enough information, say "I don\'t know."'
                 ),
             },
@@ -41,6 +41,8 @@ class llm_model:
             **ids,
             max_new_tokens=1000,
         )
-        return self.tokenizer.decode(
-            output.tolist()[0][len(ids["input_ids"][0]) :], skip_special_tokens=True
+        return str(
+            self.tokenizer.decode(
+                output.tolist()[0][len(ids["input_ids"][0]) :], skip_special_tokens=True
+            )
         )

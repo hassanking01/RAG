@@ -5,10 +5,9 @@ from collections import Counter
 from pathlib import Path
 from src.models import MinimalSource
 import pickle
-from .models import MinimalSource
 from .errors import Patherror
 from typing import cast
-
+from .enums import Filestatus
 STOPWORDS_EN = [
     "a",
     "an",
@@ -46,31 +45,31 @@ STOPWORDS_EN = [
 ]
 
 class Tokens:
-    def __init__(self, ids, vocab, tf, idf, docs_length):
-        self.ids: list[list[int]] = ids
+    def __init__(self, ids, vocab, tf, idf, docs_length, counter):
+        self.ids: dict[str, list[int]] = ids
         self.docs_length: list[int] = docs_length
         self.vocab: dict[str, int] = vocab
-        self.tf: dict[int, dict[int, int]] = tf
-        self.idf: list[float] = idf
+        self.tf: dict[int, dict[str, int]] = tf
+        self.idf: dict[int, float] = idf
+        self.counter = counter
 
     @classmethod
     def tokenize(cls, save_path: Path) -> Tokens:
-        chunks: list[MinimalSource] = [
-            MinimalSource(**data) for data in json.loads(save_path.read_text())
-        ]
+        from typing import Any
+        chunks: list[Any] = json.loads(save_path.read_text())
         documents = [
-            Path(chunk.file_path).read_text()[
-                chunk.first_character_index : chunk.last_character_index
+            Path(chunk["file_path"]).read_text()[
+                chunk["first_character_index"] : chunk["last_character_index"]
             ]
             for chunk in chunks
         ]
 
+        ids: dict[str, list[int]] = []
+        docs_length: dict[str, int] = []
         vocab: dict[str, int] = {}
-        ids: list[list[int]] = []
-        docs_length: list[int] = []
         counter = 0
-        tf = {}
-        idf: list[float] = []
+        tf: dict[int, dict[str, int]] = {}
+        idf: dict[int, float] = []
 
         for index, document in enumerate(documents):
             document = document.lower()
@@ -78,7 +77,7 @@ class Tokens:
             splited = [part for part in splited if part not in STOPWORDS_EN]
             count = Counter(splited)
             length = 0
-            document_ids = []
+            token_ids = []
             for item in count:
                 token_id = -1
                 if item not in vocab:
@@ -88,16 +87,17 @@ class Tokens:
                 else:
                     token_id = vocab[item]
                 tf.setdefault(token_id, {})
-                tf[token_id][index] = count[item]
+                tf[token_id][document_id] = count[item]
                 length += count[item]
-                document_ids += [token_id]
-            ids.append(document_ids)
-            docs_length.append(length)
+                token_ids += [token_id]
+            document_id = chunks[index]["id"]
+            ids[document_id] = token_ids
+            docs_length[document_id] = length
         N = len(ids)
         for _ , token_id in vocab.items():
             df = len(tf[token_id])
             idf.append(math.log(1 + (N - df + 0.5) / (df + 0.5)))
-        return cls(ids, vocab, tf, idf, docs_length)
+        return cls(ids, vocab, tf, idf, docs_length, counter)
 
     @staticmethod
     def get_tokens(query: str, tokenz: Tokens) -> list[int]:
@@ -125,13 +125,15 @@ class BM25:
     def index(self) -> None:
         self.tokens = Tokens.tokenize(self.chunks_path)
         self.avgdl = self._calculate_avgdl()      
-        for index, doc in enumerate(self.tokens.ids):
-            self._index.setdefault(index, {})
+        for doc_id, doc in self.tokens.ids.items():
+            self._index.setdefault(doc_id, {})
             for token_id in doc:
-                score = self._calculate_term_score(token_id, index)
-                self._index[index][token_id] = score
+                score = self._calculate_term_score(token_id, doc_id)
+                self._index[doc_id][token_id] = score
         self.save()
 
+    def re_index(self, edited: dict[str, Filestatus]):
+        pass
     def save(self):
         if not self.save_path.exists():
             self.save_path.mkdir(parents=True)
@@ -154,7 +156,8 @@ class BM25:
         score = self.tokens.idf[token_id] * (bast / maqam)
         return score
     def _calculate_avgdl(self) -> float:
-        return sum(self.tokens.docs_length) / len(self.tokens.ids)
+        doc_lengths = self.tokens.docs_length
+        return sum([doc_lengths[doc] for doc in doc_lengths ]) / len(self.tokens.ids)
 
     def search(self, query: str, k):
         tokens = Tokens.get_tokens(query, self.tokens)

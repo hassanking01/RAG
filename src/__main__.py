@@ -19,7 +19,7 @@ from .models import (
 )
 from .semantic import VectorDb
 
-install()
+# install()
 
 
 class RAG:
@@ -30,10 +30,24 @@ class RAG:
         self.lexical = BM25(self.processed_path, self.chunker.save_path)
         self.semantic = VectorDb(self.processed_path, self.chunker.save_path)
 
+    def is_full_indexing(self) -> True:
+        lexical_files = not self.lexical.save_path.exists()
+        semantic_files = not self.semantic.save_path.exists()
+        chunker_files = not self.chunker.save_path.exists()
+        if lexical_files or semantic_files or chunker_files:
+            return True
+        
+
     def index(self, max_chunk_size: int = 2000):
-        self.chunker.chunk(self.raw_path, max_chunk_size)
-        self.lexical.index()
-        self.semantic.index()
+        if self.is_full_indexing():
+            self.chunker.chunk(self.raw_path, max_chunk_size)
+            self.lexical.index()
+            self.semantic.index()
+        else:
+            edited = self.chunker.re_chunk(self.raw_path, max_chunk_size=max_chunk_size)
+            self.lexical = self.lexical.load()
+            self.lexical.re_index(edited)
+            exit()
 
     def search(self, query: str, k: int = 10):
         chunks: list[MinimalSource] = [
@@ -94,7 +108,7 @@ class RAG:
             ragadataset_answers.rag_questions.append(answered)
         with open(save_directory, "w") as file:
             json.dump(ragadataset_answers.model_dump(mode="json"), file, indent=4)
-
-
+        
+        print(file=sys.stderr)
 if "__main__" == __name__:
     result = fire.Fire(RAG)

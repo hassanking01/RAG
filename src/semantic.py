@@ -13,7 +13,7 @@ class VectorDb:
         chunks_path: Path,
         model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
     ) -> None:
-        self.model = SentenceTransformer(model_name)
+        self.model: SentenceTransformer = SentenceTransformer(model_name)
         self.chunks_path = chunks_path
         self.save_path = processed_path / "semantic/embeddings.npy"
         self._is_loaded = False
