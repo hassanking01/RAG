@@ -39,6 +39,8 @@ class RAG:
         
 
     def index(self, max_chunk_size: int = 2000):
+        self.lexical.index()
+        exit()
         if self.is_full_indexing():
             self.chunker.chunk(self.raw_path, max_chunk_size)
             self.lexical.index()

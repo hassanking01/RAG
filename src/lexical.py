@@ -104,19 +104,84 @@ class Tokens:
             idf[token_id] = math.log(1 + (N - df + 0.5) / (df + 0.5))
         return cls(ids, vocab, tf, idf, docs_length, counter, files_history)
 
-    def delete_docs(self, file: str) -> None:
+    def delete_docs(self, file: str) -> set[int]:
         docs = self.files_history.pop(file, None)
         if not docs:
             return
+        affected_tokens = set()
         for doc in docs:
-            for token_id in list(self.tf):
+            for token_id in self.ids[doc]:
                 _ = self.tf[token_id].pop(doc, None)
                 if len(self.tf[token_id]) == 0:
                     _ = self.tf.pop(token_id, None)
                     _ = self.idf.pop(token_id)
-    def modifi_tokens(self, file: str) -> None:
-        pass
-    def add_tokens(self, file: str) -> None:
+                else:
+                    affected_tokens.add(token_id)
+    def modify_tokens(self, file: str, chunks_path: Path) -> set[int]:
+        chunks = json.loads(chunks_path.read_text())
+        this_file_chunks = { chunk["id"]:chunk for chunk in chunks if chunk["file_path"] == file}        
+        old_docs = set(self.files_history[file])
+        new_docs = set(chunk_id for chunk_id in this_file_chunks)
+        to_skip = old_docs & new_docs
+        to_remove = old_docs - new_docs
+        affected_tokens = set()
+        to_add = new_docs - old_docs
+        for doc in old_docs:
+            if doc in to_skip:
+                continue
+            if doc in to_remove:
+                for token_id in self.ids[doc]:
+                    _ = self.tf[token_id].pop(doc, None)
+                    if len(self.tf[token_id]) == 0:
+                        _ = self.tf.pop(token_id, None)
+                        _ = self.idf.pop(token_id, None)
+                    else:
+                        affected_tokens.add(token_id)
+                self.files_history[file].remove(doc)
+        for doc in to_add:
+            self.files_history[file] += [doc]
+            first_index = this_file_chunks[doc]["first_character_index"]
+            last_index = this_file_chunks[doc]["last_character_index"]
+            #TODO fix this get_tokens does not return new tokens
+            tokens = Tokens.get_tokens(Path(file).read_text[first_index:last_index])
+            self.ids.setdefault(doc, [])
+            #TODO i need Counter() to calculate the tokens in each doc
+            for token in tokens:
+                if token in self.vocab:
+                    token_id = self.vocab[token]
+                else:
+                    self.vocab[token] = self.counter
+                    self.counter += 1
+                    token_id = self.vocab[token]
+                affected_tokens.add(token_id)
+                self.ids[doc] += [token_id]
+            self.files_history[file] += [doc]
+        return affected_tokens
+                
+    def add_tokens(self, file: str, chunks_path: Path) -> None:
+        chunks = json.loads(chunks_path.read_text())
+        this_file_chunks = {chunk["id"]:chunk for chunk in chunks if chunk["file_path"] == file}
+        affected_tokens = set()
+        for doc in this_file_chunks:
+            self.files_history[file] += [doc]
+            first_index = this_file_chunks[doc]["first_character_index"]
+            last_index = this_file_chunks[doc]["last_character_index"]
+            #TODO fix this get_tokens does not return new tokens
+            tokens = Tokens.get_tokens(Path(file).read_text[first_index:last_index])
+            self.ids.setdefault(doc, [])
+            for token in tokens:
+                if token in self.vocab:
+                    token_id = self.vocab[token]
+                else:
+                    self.vocab[token] = self.counter
+                    self.counter += 1
+                    token_id = self.vocab[token]
+                affected_tokens.add(token_id)
+                self.ids[doc] += [token_id]
+            self.files_history[file] += [doc]
+        return affected_tokens
+
+    def recalculat_idf(self, affected_tokens: set[int]) -> None:
         pass
 
     @staticmethod
@@ -143,7 +208,6 @@ class BM25:
         self.loaded = False
 
     def index(self) -> None:
-        print("indexing")
         self.tokens = Tokens.tokenize(self.chunks_path)
         self.avgdl = self._calculate_avgdl()
         print(self.tokens.files_history)      
@@ -156,14 +220,15 @@ class BM25:
         self.save()
 
     def re_index(self, edited: dict[str, Filestatus]):
+        affected_tokens = set()
         for file, state in edited.items():
             match state:
                 case Filestatus.DELETED:
-                    self.tokens.delete_docs(file)
+                    affected_tokens.union(self.tokens.delete_docs(file))
                 case Filestatus.MODIFIED:
-                    self.tokens.modifi_tokens(file)
+                    affected_tokens.union(self.tokens.modify_tokens(file, self.chunks_path))
                 case Filestatus.ADDED:
-                    self.tokens.add_tokens(file)
+                    affected_tokens.union(self.tokens.add_tokens(file, self.chunks_path))
             
     def save(self):
         if not self.save_path.exists():
