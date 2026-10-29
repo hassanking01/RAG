@@ -91,7 +91,7 @@ class Chunker:
                 file,
                 indent=4
             )
-        return edited
+        return len(filted_chunks) != len(chunks) , edited
     
     def is_valid_file(self, file: Path):
         file_extension = file.name.split(".")[-1]

@@ -48,7 +48,7 @@ STOPWORDS_EN = [
 class Tokens:
     def __init__(self, ids, vocab, tf, idf, docs_length, counter, files_history):
         self.ids: dict[str, list[int]] = ids
-        self.docs_length: list[int] = docs_length
+        self.docs_length: dict[str, int] = docs_length
         self.vocab: dict[str, int] = vocab
         self.tf: dict[int, dict[str, int]] = tf
         self.idf: dict[int, float] = idf
@@ -74,9 +74,13 @@ class Tokens:
         idf: dict[int, float] = {}
 
         for index, document in enumerate(documents):
-            document = document.lower()
+            file_name = Path(chunks[index]["file_path"]).name
+            document = (file_name + " " + document)
             splited = re.findall(r"(?u)\b\w\w+\b", document)
             splited = [part for part in splited if part not in STOPWORDS_EN]
+            to_index = []
+            for token in splited:
+                to_index += []
             count = Counter(splited)
             length = 0
             token_ids = []
@@ -142,11 +146,10 @@ class Tokens:
             self.files_history[file] += [doc]
             first_index = this_file_chunks[doc]["first_character_index"]
             last_index = this_file_chunks[doc]["last_character_index"]
-            #TODO fix this get_tokens does not return new tokens
-            tokens = Tokens.get_tokens(Path(file).read_text[first_index:last_index])
+            tokens = Tokens.get_tokens(Path(file).read_text()[first_index:last_index])
+            counter = Counter(tokens)
             self.ids.setdefault(doc, [])
-            #TODO i need Counter() to calculate the tokens in each doc
-            for token in tokens:
+            for token in counter:
                 if token in self.vocab:
                     token_id = self.vocab[token]
                 else:
@@ -154,6 +157,8 @@ class Tokens:
                     self.counter += 1
                     token_id = self.vocab[token]
                 affected_tokens.add(token_id)
+                self.tf.setdefault(token_id, {})
+                self.tf[token_id][doc] = counter[token]
                 self.ids[doc] += [token_id]
             self.files_history[file] += [doc]
         return affected_tokens
@@ -166,10 +171,10 @@ class Tokens:
             self.files_history[file] += [doc]
             first_index = this_file_chunks[doc]["first_character_index"]
             last_index = this_file_chunks[doc]["last_character_index"]
-            #TODO fix this get_tokens does not return new tokens
-            tokens = Tokens.get_tokens(Path(file).read_text[first_index:last_index])
+            tokens = Tokens.get_tokens(Path(file).read_text()[first_index:last_index])
             self.ids.setdefault(doc, [])
-            for token in tokens:
+            counter = Counter(tokens)
+            for token in counter:
                 if token in self.vocab:
                     token_id = self.vocab[token]
                 else:
@@ -177,20 +182,29 @@ class Tokens:
                     self.counter += 1
                     token_id = self.vocab[token]
                 affected_tokens.add(token_id)
+                self.tf.setdefault(token_id, {})
+                self.tf[token_id][doc] = counter[token]
                 self.ids[doc] += [token_id]
             self.files_history[file] += [doc]
         return affected_tokens
 
-    def recalculat_idf(self, affected_tokens: set[int]) -> None:
-        pass
+    def recalculat_idf(self, affected_tokens: set[int], is_full_idf: bool) -> None:
+        N = len(self.ids)
+        if is_full_idf:
+            for _ , token_id in self.vocab.items():
+                df = len(self.tf[token_id])
+                self.idf[token_id] = math.log(1 + (N - df + 0.5) / (df + 0.5))
+        else:
+            for token_id in affected_tokens:
+                df = len(self.tf[token_id])
+                self.idf[token_id] = math.log(1 + (N - df + 0.5) / (df + 0.5))
 
     @staticmethod
-    def get_tokens(query: str, tokenz: Tokens) -> list[int]:
+    def get_tokens(query: str) -> list[int]:
         query = query.lower()
         splited = re.findall(r"(?u)\b\w\w+\b", query)
         splited = [part for part in splited if part not in STOPWORDS_EN]
-        return [tokenz.vocab[term] for term in splited if term in tokenz.vocab]
-
+        return splited
 
 class BM25:
     def __init__(
@@ -200,27 +214,20 @@ class BM25:
         k1: float = 1.5,
         b: float = 0.75,
     ):
-        self._index = {}
         self.save_path = processed_path / "lexical"
         self.chunks_path = chunks_path
         self.k1 = k1
         self.b = b
         self.loaded = False
-
+        self.avgdl: float = 0.0
     def index(self) -> None:
-        self.tokens = Tokens.tokenize(self.chunks_path)
-        self.avgdl = self._calculate_avgdl()
-        print(self.tokens.files_history)      
-        exit()
-        # for doc_id, doc in self.tokens.ids.items():
-        #     self._index.setdefault(doc_id, {})
-        #     for token_id in doc:
-        #         score = self._calculate_term_score(token_id, doc_id)
-        #         self._index[doc_id][token_id] = score
+        self.tokens: Tokens = Tokens.tokenize(self.chunks_path)
+        self._calculate_avgdl()
         self.save()
 
-    def re_index(self, edited: dict[str, Filestatus]):
+    def re_index(self, rec_result: tuple[bool, dict[str, Filestatus]]):
         affected_tokens = set()
+        full_idf , edited = rec_result
         for file, state in edited.items():
             match state:
                 case Filestatus.DELETED:
@@ -229,7 +236,10 @@ class BM25:
                     affected_tokens.union(self.tokens.modify_tokens(file, self.chunks_path))
                 case Filestatus.ADDED:
                     affected_tokens.union(self.tokens.add_tokens(file, self.chunks_path))
-            
+        self.tokens.recalculat_idf(affected_tokens=affected_tokens, is_full_idf=full_idf)
+        if full_idf:
+            self._calculate_avgdl()
+        self.save()
     def save(self):
         if not self.save_path.exists():
             self.save_path.mkdir(parents=True)
@@ -243,7 +253,7 @@ class BM25:
         bm25 = cast(BM25, bm25)
         bm25.loaded = True
         return bm25
-    def _calculate_term_score(self, token_id: int, doc: int) -> float:
+    def _calculate_term_score(self, token_id: int, doc: str) -> float:
         score = 0
         D = self.tokens.docs_length[doc]
         tf_qi = self.tokens.tf[token_id].get(doc, 0)
@@ -251,20 +261,25 @@ class BM25:
         maqam = tf_qi + self.k1 * (1 - self.b + (self.b * (D / self.avgdl)))
         score = self.tokens.idf[token_id] * (bast / maqam)
         return score
-    def _calculate_avgdl(self) -> float:
+    def _calculate_avgdl(self) -> None:
         doc_lengths = self.tokens.docs_length
-        return sum([doc_lengths[doc] for doc in doc_lengths ]) / len(self.tokens.ids)
+        self.avgdl = sum([doc_lengths[doc] for doc in doc_lengths ]) / len(self.tokens.ids)
 
     def search(self, query: str, k):
-        tokens = Tokens.get_tokens(query, self.tokens)
+        tokens = Tokens.get_tokens(query)
+        chunks = json.loads(self.chunks_path.read_text())
+        chunks_index = {chunk["id"]:index for index, chunk in enumerate(chunks)}
         scores = []
-        for doc in self._index:
+        for doc in self.tokens.ids:
             score = 0
-            for token_id in tokens:
-                if token_id not in self._index[doc]:
+            for token in tokens:
+                token_id = self.tokens.vocab.get(token, -1)
+                if token_id == -1:
                     continue
-                score += self._index[doc][token_id]
+                if token_id not in self.tokens.ids[doc]:
+                    continue
+                score += self._calculate_term_score(token_id, doc)
             scores += [[doc, score]]
         scores = sorted(scores, key=lambda x: x[1], reverse=True)
         scores = scores[:k]
-        return [idx for idx, _ in scores]
+        return [chunks_index[idx] for idx, _ in scores]

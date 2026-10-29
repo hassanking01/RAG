@@ -39,12 +39,10 @@ class RAG:
         
 
     def index(self, max_chunk_size: int = 2000):
-        self.lexical.index()
-        exit()
         if self.is_full_indexing():
             self.chunker.chunk(self.raw_path, max_chunk_size)
             self.lexical.index()
-            self.semantic.index()
+            # self.semantic.index()
         else:
             edited = self.chunker.re_chunk(self.raw_path, max_chunk_size=max_chunk_size)
             self.lexical = self.lexical.load()
@@ -110,6 +108,5 @@ class RAG:
         with open(save_directory, "w") as file:
             json.dump(ragadataset_answers.model_dump(mode="json"), file, indent=4)
         
-        print(file=sys.stderr)
 if "__main__" == __name__:
     result = fire.Fire(RAG)
