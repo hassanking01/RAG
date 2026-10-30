@@ -79,6 +79,7 @@ class Tokens:
             splited = re.findall(r"(?u)\b\w\w+\b", document)
             splited = [part for part in splited if part not in STOPWORDS_EN]
             to_index = []
+            #TODO add snake_case and camelCase logic
             for token in splited:
                 to_index += []
             count = Counter(splited)
