@@ -6,9 +6,11 @@ from pathlib import Path
 from src.models import MinimalSource
 import pickle
 from .errors import Patherror
-from typing import cast
+from typing import cast, Any
 from .enums import Filestatus
 from rich import print
+from functools import lru_cache
+from heapq import nlargest
 STOPWORDS_EN = [
     "a",
     "an",
@@ -55,6 +57,22 @@ class Tokens:
         self.counter = counter
         self.files_history: dict[str, list[str]] = files_history
 
+    @staticmethod
+    def _get_tokens(token: str) -> list[str]:
+        def camel_case(token: str) -> list[str]:
+            tokens = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", token)
+            tokens = re.sub(r"([A-Z])([A-Z][a-z])", r"\1 \2", token)
+            return list(map(lambda x: x.lower(), tokens.split(" ")))
+              
+        result = []
+        result += [token.lower()]
+        if "_" in token:
+            for sub_token in token.split("_"):
+                result += [sub_token.lower()]
+        if re.search(r"([a-z]+)([A-Z])", token):
+            result += camel_case(token)
+        return list(filter(lambda x:x not in STOPWORDS_EN and len(x) > 1 ,result))
+
     @classmethod
     def tokenize(cls, save_path: Path) -> Tokens:
         from typing import Any
@@ -74,15 +92,15 @@ class Tokens:
         idf: dict[int, float] = {}
 
         for index, document in enumerate(documents):
-            file_name = Path(chunks[index]["file_path"]).name
+            file_name = str(Path(chunks[index]["file_path"]))
             document = (file_name + " " + document)
-            splited = re.findall(r"(?u)\b\w\w+\b", document)
-            splited = [part for part in splited if part not in STOPWORDS_EN]
+        
+            splited: list[str] = re.findall(r"(?u)\b\w\w+\b", document)
+            splited = [splited[index] for index, part in enumerate(map(lambda x:x.lower(), splited)) if part not in STOPWORDS_EN and not part.isdigit()]
             to_index = []
-            #TODO add snake_case and camelCase logic
             for token in splited:
-                to_index += []
-            count = Counter(splited)
+                to_index += Tokens._get_tokens(token)
+            count = Counter(to_index)
             length = 0
             token_ids = []
             document_id = chunks[index]["id"]
@@ -122,6 +140,7 @@ class Tokens:
                     _ = self.idf.pop(token_id)
                 else:
                     affected_tokens.add(token_id)
+
     def modify_tokens(self, file: str, chunks_path: Path) -> set[int]:
         chunks = json.loads(chunks_path.read_text())
         this_file_chunks = { chunk["id"]:chunk for chunk in chunks if chunk["file_path"] == file}        
@@ -254,33 +273,34 @@ class BM25:
         bm25 = cast(BM25, bm25)
         bm25.loaded = True
         return bm25
+    @lru_cache
     def _calculate_term_score(self, token_id: int, doc: str) -> float:
         score = 0
         D = self.tokens.docs_length[doc]
-        tf_qi = self.tokens.tf[token_id].get(doc, 0)
+        tf_qi = self.tokens.tf[token_id].get(doc)
         bast = tf_qi * (self.k1 + 1)
-        maqam = tf_qi + self.k1 * (1 - self.b + (self.b * (D / self.avgdl)))
+        maqam = tf_qi + self.k1 * (1 - self.b + self.b * (D / self.avgdl))
         score = self.tokens.idf[token_id] * (bast / maqam)
         return score
     def _calculate_avgdl(self) -> None:
         doc_lengths = self.tokens.docs_length
         self.avgdl = sum([doc_lengths[doc] for doc in doc_lengths ]) / len(self.tokens.ids)
 
+    @lru_cache
+    def get_chunks_index(self) -> list[dict[str, Any]]:
+        chunks = json.loads(self.chunks_path.read_text())
+        return {chunk["id"]:index for index, chunk in enumerate(chunks)}
+
     def search(self, query: str, k):
         tokens = Tokens.get_tokens(query)
-        chunks = json.loads(self.chunks_path.read_text())
-        chunks_index = {chunk["id"]:index for index, chunk in enumerate(chunks)}
-        scores = []
-        for doc in self.tokens.ids:
-            score = 0
-            for token in tokens:
-                token_id = self.tokens.vocab.get(token, -1)
-                if token_id == -1:
-                    continue
-                if token_id not in self.tokens.ids[doc]:
-                    continue
-                score += self._calculate_term_score(token_id, doc)
-            scores += [[doc, score]]
-        scores = sorted(scores, key=lambda x: x[1], reverse=True)
-        scores = scores[:k]
-        return [chunks_index[idx] for idx, _ in scores]
+        chunks_index = self.get_chunks_index()
+        scores = {}
+        for token in tokens:
+            token_id = self.tokens.vocab.get(token, -1)
+            if token_id == -1:
+                continue
+            for doc in self.tokens.tf[token_id]:
+                scores.setdefault(doc, 0.0)
+                scores[doc] += self._calculate_term_score(token_id, doc)
+        scores = nlargest(k, scores, key=lambda x: scores[x])
+        return [chunks_index[idx] for idx in scores]

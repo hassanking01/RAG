@@ -28,7 +28,7 @@ class RAG:
         self.processed_path = self.raw_path.parent.parent / "processed"
         self.chunker = Chunker(self.processed_path)
         self.lexical = BM25(self.processed_path, self.chunker.save_path)
-        self.semantic = VectorDb(self.processed_path, self.chunker.save_path)
+        # self.semantic = VectorDb(self.processed_path, self.chunker.save_path)
 
     def is_full_indexing(self) -> True:
         lexical_files = not self.lexical.save_path.exists()

@@ -4,7 +4,10 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 class llm_model:
     def __init__(self, model_name: str = "Qwen/Qwen3-0.6B"):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForCausalLM.from_pretrained(model_name)
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            
+            )
 
     def Generate_answer(self, query: str, context) -> str:
         messages = [
