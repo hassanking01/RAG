@@ -100,7 +100,7 @@ class VectorDb:
                     chunk["first_character_index"] : chunk["last_character_index"]
                 ]
             ]
-
+        # TODO clean matadata from removed docs
     def search(self, query: str, k: int) -> list[int]:
         query_embedding = self.model.encode(query, show_progress_bar=True)
         if not self._is_loaded:
