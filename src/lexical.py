@@ -11,6 +11,8 @@ from .enums import Filestatus
 from rich import print
 from functools import lru_cache
 from heapq import nlargest
+import tqdm
+
 STOPWORDS_EN = [
     "a",
     "an",
@@ -91,7 +93,7 @@ class Tokens:
         tf: dict[str, dict[str, int]] = {}
         idf: dict[int, float] = {}
 
-        for index, document in enumerate(documents):
+        for index, document in enumerate(tqdm.tqdm(documents)):
             file_name = str(Path(chunks[index]["file_path"]))
             document = (file_name + " " + document)
         
@@ -240,8 +242,9 @@ class BM25:
         self.b = b
         self.loaded = False
         self.avgdl: float = 0.0
+        self.tokens: Tokens = Tokens([], [], [], [], [], [] ,[])
     def index(self) -> None:
-        self.tokens: Tokens = Tokens.tokenize(self.chunks_path)
+        self.tokens= Tokens.tokenize(self.chunks_path)
         self._calculate_avgdl()
         self.save()
 
@@ -267,12 +270,13 @@ class BM25:
             raise Patherror("the save dir for lexical is dir")
         with open(self.save_path / "bm52.pkl","wb") as f:
                 pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
-    def load(self) -> BM25:
+    def load(self) -> None:
         with open(self.save_path / "bm52.pkl", "rb") as f:
             bm25 = pickle.load(f)
         bm25 = cast(BM25, bm25)
-        bm25.loaded = True
-        return bm25
+        self.tokens = bm25.tokens
+        self.avgdl = bm25.avgdl
+        self.loaded = True
     @lru_cache
     def _calculate_term_score(self, token_id: int, doc: str) -> float:
         score = 0
@@ -291,7 +295,7 @@ class BM25:
         chunks = json.loads(self.chunks_path.read_text())
         return {chunk["id"]:index for index, chunk in enumerate(chunks)}
 
-    def search(self, query: str, k):
+    def search(self, query: str, k) -> list[int]:
         tokens = Tokens.get_tokens(query)
         chunks_index = self.get_chunks_index()
         scores = {}

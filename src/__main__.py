@@ -28,7 +28,7 @@ class RAG:
         self.processed_path = self.raw_path.parent.parent / "processed"
         self.chunker = Chunker(self.processed_path)
         self.lexical = BM25(self.processed_path, self.chunker.save_path)
-        # self.semantic = VectorDb(self.processed_path, self.chunker.save_path)
+        self.semantic = VectorDb(self.processed_path, self.chunker.save_path)
 
     def is_full_indexing(self) -> True:
         lexical_files = not self.lexical.save_path.exists()
@@ -42,22 +42,38 @@ class RAG:
         if self.is_full_indexing():
             self.chunker.chunk(self.raw_path, max_chunk_size)
             self.lexical.index()
-            # self.semantic.index()
+            self.semantic.index()
         else:
             edited = self.chunker.re_chunk(self.raw_path, max_chunk_size=max_chunk_size)
-            self.lexical = self.lexical.load()
+            self.lexical.load()
             self.lexical.re_index(edited)
+            self.semantic.re_index(edited)
+    def _rrf(self, results: list[list[int]], k=60):
+        scores = {}
 
+        for result_list in results:
+            for rank, doc_id in enumerate(result_list, start=1):
+                scores[doc_id] = scores.get(doc_id, 0) + 1 / (k + rank)
+
+        return sorted(
+            scores.items(),
+            key=lambda item: item[1],
+            reverse=True
+        )
     def search(self, query: str, k: int = 10):
         chunks: list[MinimalSource] = [
             MinimalSource(**data)
             for data in json.loads(self.chunker.save_path.read_text())
         ]
         if not self.lexical.loaded:
-            self.lexical = self.lexical.load()
+            self.lexical.load()
+        if not self.semantic._is_loaded:
+            self.semantic.load()
         lexical_results = self.lexical.search(query, k)
+        semantic_results = self.semantic.search(query, k)
+        # final_result = [data[0] for data in self._rrf([lexical_results, semantic_results])][:k]
         minimal_source_list: list[MinimalSource] = []
-        for idx in lexical_results:
+        for idx in semantic_results:
             minimal_source_list.append(chunks[idx])
         return MinimalSearchResults(
             question=query, retrieved_sources=minimal_source_list
@@ -109,4 +125,9 @@ class RAG:
             json.dump(ragadataset_answers.model_dump(mode="json"), file, indent=4)
         
 if "__main__" == __name__:
+    # try:
     result = fire.Fire(RAG)
+    # except KeyboardInterrupt:
+    #     print("bye")
+    # except BaseException:
+    #     print("something really bad happened")
