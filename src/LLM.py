@@ -16,7 +16,7 @@ class llm_model:
                 "content": (
                     "You are a helpful assistant that answers questions "
                     "using the provided context from the user's files.\n"
-                    "Only use information from the p ovided context. "
+                    "Only use information from the povided context. "
                     'If the context does not contain enough information, say "I don\'t know."'
                 ),
             },

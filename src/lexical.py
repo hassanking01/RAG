@@ -85,6 +85,7 @@ class Tokens:
             ]
             for chunk in chunks
         ]
+        print(len(documents))
         files_history: dict[str, list[str]] = {}
         ids: dict[str, list[int]] = {}
         docs_length: dict[str, int] = {}
@@ -124,6 +125,7 @@ class Tokens:
             docs_length[document_id] = length
             files_history[file_name] += [document_id]
         N = len(ids)
+
         for _ , token_id in vocab.items():
             df = len(tf[token_id])
             idf[token_id] = math.log(1 + (N - df + 0.5) / (df + 0.5))

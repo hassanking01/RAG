@@ -18,6 +18,7 @@ from .models import (
     StudentSearchResultsAndAnswer,
 )
 from .semantic import VectorDb
+from functools import lru_cache
 
 # install()
 
@@ -60,28 +61,33 @@ class RAG:
             key=lambda item: item[1],
             reverse=True
         )
-    def search(self, query: str, k: int = 10):
-        chunks: list[MinimalSource] = [
+
+    @lru_cache
+    def _get_chunks(self):
+        return[
             MinimalSource(**data)
             for data in json.loads(self.chunker.save_path.read_text())
         ]
+
+    def search(self, query: str, k: int = 10):
+        chunks: list[MinimalSource] = self._get_chunks()
         if not self.lexical.loaded:
             self.lexical.load()
         if not self.semantic._is_loaded:
             self.semantic.load()
         lexical_results = self.lexical.search(query, k)
         semantic_results = self.semantic.search(query, k)
-        # final_result = [data[0] for data in self._rrf([lexical_results, semantic_results])][:k]
+        final_result = [data[0] for data in self._rrf([lexical_results, semantic_results])][:k]
         minimal_source_list: list[MinimalSource] = []
-        for idx in semantic_results:
+        for idx in final_result:
             minimal_source_list.append(chunks[idx])
         return MinimalSearchResults(
             question=query, retrieved_sources=minimal_source_list
         )
 
-    def search_dataset(self, dataset_path: str, k: int, save_directory: str):
-        path = Path(dataset_path)
-        rag_dataset = RagDataset(**json.loads(path.read_text()))
+    def search_dataset(self, dataset_path: str, k: int, save_directory: str) -> None:
+        _dataset_path = Path(dataset_path)
+        rag_dataset = RagDataset(**json.loads(_dataset_path.read_text()))
         result: list[MinimalSearchResults] = []
         for Unansweredquestion in tqdm(
             rag_dataset.rag_questions, desc="Processing data set"
@@ -89,8 +95,12 @@ class RAG:
             r = self.search(Unansweredquestion.question, k)
             r.question_id = Unansweredquestion.question_id
             result += [r]
-        student_search = StudentSearchResults(k=1, search_results=result)
-        with open(save_directory, "w") as file:
+        student_search = StudentSearchResults(k=k, search_results=result)
+        save_directory: Path = Path(save_directory)
+        if not save_directory.exists():
+            save_directory.mkdir(parents=True, exist_ok=True)
+        save_result = save_directory / _dataset_path.name
+        with open(save_result, "w") as file:
             json.dump(student_search.model_dump(mode="json"), file, indent=4)
 
     def answer(self, query: str, k: int = 10):
@@ -108,26 +118,48 @@ class RAG:
             retrieved_sources=minimal_source.retrieved_sources,
             answer=answer,
         )
+    def _answer(self,question_id:str, query: str ,minimal_source: list[MinimalSource], model: llm_model):
+        context = ""
+        for source in minimal_source:
+            file = Path(source.file_path)
+            file_text = file.read_text()
+            context += f"- {file_text[source.first_character_index : source.last_character_index]}\n"
+        answer = model.Generate_answer(query, context)
+
+        return MinimalAnswer(
+            question_id=question_id,
+            question=query,
+            retrieved_sources=minimal_source,
+            answer=answer,
+        )
+        
 
     def answer_dataset(self, student_search_results_path: str, save_directory: str):
-        file = Path(student_search_results_path)
-        ragdataset_qustions = RagDataset(**json.loads(file.read_text()))
-        ragadataset_answers = RagDataset(rag_questions=[])
-        for Unanswerd_question in ragdataset_qustions.rag_questions:
-            result = self.answer(Unanswerd_question.question, 5)
-            answered = AnsweredQuestion(
-                question=Unanswerd_question.question,
-                sources=result.retrieved_sources,
-                answer=result.answer,
+        model = llm_model()
+        search_results_file = Path(student_search_results_path)
+        student_search_result = StudentSearchResults(**json.loads(search_results_file.read_text()))
+        k = student_search_result.k
+        results = []
+        for Unanswerd_question in tqdm(student_search_result.search_results):
+            question_answer = self._answer(
+                Unanswerd_question.question_id,
+                Unanswerd_question.question,
+                Unanswerd_question.retrieved_sources,
+                model
             )
-            ragadataset_answers.rag_questions.append(answered)
-        with open(save_directory, "w") as file:
-            json.dump(ragadataset_answers.model_dump(mode="json"), file, indent=4)
+            results.append(question_answer)
+        student_answer_resutl = StudentSearchResultsAndAnswer(search_results=results, k=k)
+        _save_directory = Path(save_directory)
+        if not _save_directory.exists():
+            _save_directory.mkdir(parents=True, exist_ok=True)
+        save_result = _save_directory / search_results_file.name
+        with open(save_result, "w") as file:
+            json.dump(student_answer_resutl.model_dump(mode="json"), file, indent=4)
         
 if "__main__" == __name__:
-    # try:
-    result = fire.Fire(RAG)
-    # except KeyboardInterrupt:
-    #     print("bye")
-    # except BaseException:
-    #     print("something really bad happened")
+    try:
+        result = fire.Fire(RAG)
+    except KeyboardInterrupt:
+        print("bye")
+    except BaseException:
+        print("something really bad happened")

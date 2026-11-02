@@ -8,7 +8,7 @@ from functools import lru_cache
 import pickle
 from .errors import Patherror
 from typing import cast
-from rich import print
+# from rich import print
 class VectorDb:
     def __init__(
         self,
@@ -38,7 +38,7 @@ class VectorDb:
             self.files_history.setdefault(data["file_path"], [])
             self.files_history[data["file_path"]] += [data["id"]]
         self._embeddings = self.model.encode(documents, show_progress_bar=True)
-        self._embeddings = numpy.load(self.save_path / "embeddings.npy" )
+        # self._embeddings = numpy.load(self.save_path / "embeddings.npy" )
         self.save()
 
     def save(self):
@@ -145,10 +145,8 @@ class VectorDb:
             self._embeddings = numpy.load(self.save_path)
             self._is_loaded = True
         scores = []
-
         for index, vector in enumerate(self._embeddings):
             scores += [(self.calculate_cos_sim(vector, query_embedding), index)]
-        scores = sorted(scores, key=lambda x: x[0])
+        scores = sorted(scores, key=lambda x: x[0], reverse=True)
         scores = scores[:k]
-
         return [i[1] for i in scores]

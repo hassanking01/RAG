@@ -21,7 +21,7 @@ class Chunker:
             "c": Language.C,
         }
 
-    def _chunk_file(self, file: Path, max_chunk_size: int):
+    def _chunk_file(self, file: Path, max_chunk_size: int, to_ignor: set):
         file_chunks = []
         language = self.get_file_lang(file)
         spliter = RecursiveCharacterTextSplitter.from_language(
@@ -37,7 +37,10 @@ class Chunker:
             hash_id = hashlib.sha256(
                 f"{str(file)}[{first_index}:{last_index}]|{file_text[first_index:last_index]}".encode()
                 ).hexdigest()
-
+            if hash_id in to_ignor:
+                continue
+            else:
+                to_ignor.add(hash_id)
             file_chunks += [
                 {
                     "id": hash_id,
@@ -52,11 +55,12 @@ class Chunker:
     def chunk(self, data_path: Path, max_chunk_size: int):
         files_progress = tqdm.tqdm(data_path.rglob("*"))
         all_chunks = []
+        processed = set()
         for file in files_progress:
             if not self.is_valid_file(file) or "/tests/" in str(file):
                 continue
             files_progress.set_description(f"Chunking {file.name}:  ")
-            all_chunks += self._chunk_file(file, max_chunk_size=max_chunk_size)
+            all_chunks += self._chunk_file(file, max_chunk_size, processed)
         if not self.save_path.parent.exists():
             self.save_path.parent.mkdir(parents=True)
         with open(self.save_path, "w") as file:
@@ -66,9 +70,9 @@ class Chunker:
         with open(self.save_path) as file:
             chunks = json.load(file)
         old_files = {chunk["file_path"]:chunk["mtime"] for chunk in chunks}
-        files_progrecess = tqdm.tqdm(data_path.rglob("*"))
+        files_progress = tqdm.tqdm(data_path.rglob("*"))
         edited = {}
-        for file in files_progrecess:
+        for file in files_progress:
             if not self.is_valid_file(file) or "/tests/" in str(file) or len(file.read_text()) == 0:
                 continue
             if str(file) not in old_files :
