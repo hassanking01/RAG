@@ -85,7 +85,6 @@ class Tokens:
             ]
             for chunk in chunks
         ]
-        print(len(documents))
         files_history: dict[str, list[str]] = {}
         ids: dict[str, list[int]] = {}
         docs_length: dict[str, int] = {}

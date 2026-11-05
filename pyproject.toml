@@ -10,6 +10,7 @@ requires-python = ">=3.14"
 dependencies = [
     "arcade>=3.3.3",
     "bm25s>=0.3.11",
+    "fastapi[standard]>=0.162.0",
     "fire>=0.7.1",
     "langchain-text-splitters>=1.1.2",
     "numpy>=2.5.3",
