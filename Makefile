@@ -1,4 +1,4 @@
-VENV=/home/hassan/goinfre/VENV
+VENV=/home/hahchtar/goinfre/VENV
 
 run:
 	@uv run -m src

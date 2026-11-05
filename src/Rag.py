@@ -28,7 +28,7 @@ class RAG:
         self.processed_path = self.raw_path.parent.parent / "processed"
         self.chunker = Chunker(self.processed_path)
         self.lexical = BM25(self.processed_path, self.chunker.save_path)
-        # self.semantic = VectorDb(self.processed_path, self.chunker.save_path)
+        self.semantic = VectorDb(self.processed_path, self.chunker.save_path)
 
     def is_full_indexing(self) -> True:
         lexical_files = not self.lexical.save_path.exists()
@@ -102,8 +102,12 @@ class RAG:
         with open(save_result, "w") as file:
             json.dump(student_search.model_dump(mode="json"), file, indent=4)
 
+    @lru_cache
+    def model(self):
+        return llm_model()
+    @lru_cache
     def answer(self, query: str, k: int = 10):
-        model = llm_model()
+        model = self.model()
         minimal_source: MinimalSearchResults = self.search(query, k)
         context = ""
         for source in minimal_source.retrieved_sources:
@@ -160,38 +164,35 @@ class RAG:
         _dataset_path = Path(dataset_path)
         dataset = RagDataset.model_validate_json(_dataset_path.read_text())
         student_search_results = StudentSearchResults.model_validate_json(_student_search_results_path.read_text())
-        questions_map:dict[str, dict[str, MinimalSource]] = {}
+        questions_map:dict[str, list[MinimalSource]] = {}
         for data in student_search_results.search_results:
-            this_question: dict[str, MinimalSource] = {}
-            for source in data.retrieved_sources:
-                this_question[source.file_path] = source
-            questions_map[data.question_id] = this_question
+            questions_map[data.question_id] = data.retrieved_sources
         recall_k = {1:0, 3:0, 5:0, 10:0}
+        min_k = student_search_results.k
         for qustion in dataset.rag_questions:
             if qustion.question_id not in questions_map:
                 raise ValueError("something bad happend")
             for k in recall_k:
                 result = 0
-                count = 0
                 for source in qustion.sources:
-                    if source.file_path in questions_map[qustion.question_id]:
-                        user_source = questions_map[qustion.question_id][source.file_path]
-                        first = max(source.first_character_index, user_source.first_character_index)
-                        last = min(source.last_character_index, user_source.last_character_index)
-                        intersection = max(
-                            0,
-                            last - first
-                        )
-                        union = len(user_source) + len(source) - intersection
+                    for user_source in questions_map[qustion.question_id][:min(k, min_k)]:
+                        if source.file_path == user_source.file_path:
+                            first = max(source.first_character_index, user_source.first_character_index)
+                            last = min(source.last_character_index, user_source.last_character_index)
+                            intersection = max(
+                                0,
+                                last - first
+                            )
+                            union = len(user_source) + len(source) - intersection
 
-                        IoO = intersection / union
-                        if IoO >= 0.05:
-                            result += 1
-                        count += 1
-                        if count >= k:
-                            break
-                recall_k[k] += result 
-        print("Evaluating Results")
-        print("=" * 30)
+                            IoO = intersection / union
+                            if IoO >= 0.05:
+                                result += 1
+                    
+                recall_k[k] += result / len(qustion.sources) 
+        print("🎯 Evaluation Results")
+        print(f"📊 Questions evaluated: {len(questions_map)}")
+        print("=" * 30, "\n")
         for k in recall_k:
-            print(f"Recall@{k}: {recall_k[k]}")
+            print(f"📈 Recall@{k}: {recall_k[k]}")
+        print({f"recall@{k}":recall_k[k] for k in recall_k})

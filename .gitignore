@@ -11,3 +11,4 @@ wheels/
 .venv
 datasets_public/
 data/
+frontend/
