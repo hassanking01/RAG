@@ -8,7 +8,7 @@ from functools import lru_cache
 import pickle
 from .errors import Patherror
 from typing import cast
-# from rich import print
+
 class VectorDb:
     def __init__(
         self,
@@ -22,13 +22,19 @@ class VectorDb:
         self._is_loaded = False
         self.metadata = []
         self.files_history: dict[str, list[str]] = {}
+
+    @lru_cache(maxsize=1)
+    def get_file_content(self, file: str):
+        return Path(file).read_text()
+
     def index(self):
 
         chunks: list[dict[str, Any]] = json.loads(self.chunks_path.read_text())
         documents = []
         for data in chunks:
+            file_content = self.get_file_content(data["file_path"])
             documents += [
-                Path(data["file_path"]).read_text()[
+                file_content[
                     data["first_character_index"] : data["last_character_index"]
                 ]
             ]
@@ -83,6 +89,7 @@ class VectorDb:
         return [chunk_id for chunk_id in this_file_chunks]
 
     def re_index(self, rec_result: tuple[bool, dict[str, Filestatus]]) :
+        self.load()
         _ , to_reindex = rec_result
         to_remove = []
         to_add = []
@@ -96,6 +103,7 @@ class VectorDb:
                     for doc in set(self.files_history[file]):
                         if doc in removed:
                             self.files_history[file].remove(doc)
+                    self.files_history[file] += added
                     to_remove += removed
                     to_add += added
                 case Filestatus.ADDED:

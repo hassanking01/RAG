@@ -1,5 +1,8 @@
 VENV=/home/hahchtar/goinfre/VENV
 
+server:
+	@uv run -m src.api
+
 run:
 	@uv run -m src
 

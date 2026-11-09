@@ -45,9 +45,9 @@ class RAG:
             self.semantic.index()
         else:
             edited = self.chunker.re_chunk(self.raw_path, max_chunk_size=max_chunk_size)
-            self.lexical.load()
-            self.lexical.re_index(edited)
-            self.semantic.re_index(edited)
+            if len(edited[1]) > 0:
+                self.lexical.re_index(edited)
+                self.semantic.re_index(edited)
     def _rrf(self, results: list[list[int]], k=60):
         scores = {}
 

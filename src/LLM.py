@@ -39,10 +39,12 @@ class llm_model:
             add_generation_prompt=True,
             return_tensors="pt",
             enable_thinking=False,
+
         )
+
         output = self.model.generate(
             **ids,
-            max_new_tokens=1000,
+            max_new_tokens=180,
         )
         return str(
             self.tokenizer.decode(

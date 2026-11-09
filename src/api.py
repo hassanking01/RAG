@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from src.Rag import RAG
+import uvicorn
 
 app = FastAPI()
 rag: RAG = RAG()
@@ -12,4 +13,14 @@ class Query(BaseModel):
 async def get_response(payload: Query):
     global rag
     result = rag.answer(payload.question, k=5)
-    return BaseModel.model_dump(result, mode="json")
+    return result.model_dump(mode="json")
+
+if __name__ == "__main__":
+    try:
+        config = uvicorn.Config(app)
+        server = uvicorn.Server(config)
+        server.run()
+    except KeyboardInterrupt:
+        pass
+    except BaseException as e:
+        print(e)

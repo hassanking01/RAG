@@ -75,12 +75,17 @@ class Tokens:
             result += camel_case(token)
         return list(filter(lambda x:x not in STOPWORDS_EN and len(x) > 1 ,result))
 
+
     @classmethod
     def tokenize(cls, save_path: Path) -> Tokens:
-        from typing import Any
+
+        @lru_cache(maxsize=1)
+        def get_file_content(file_name: str) -> str:
+            return Path(file_name).read_text()
+
         chunks: list[Any] = json.loads(save_path.read_text())
         documents = [
-            Path(chunk["file_path"]).read_text()[
+            get_file_content(chunk["file_path"])[
                 chunk["first_character_index"] : chunk["last_character_index"]
             ]
             for chunk in chunks
@@ -244,12 +249,14 @@ class BM25:
         self.loaded = False
         self.avgdl: float = 0.0
         self.tokens: Tokens = Tokens([], [], [], [], [], [] ,[])
+
     def index(self) -> None:
         self.tokens= Tokens.tokenize(self.chunks_path)
         self._calculate_avgdl()
         self.save()
 
     def re_index(self, rec_result: tuple[bool, dict[str, Filestatus]]):
+        self.load()
         affected_tokens = set()
         full_idf , edited = rec_result
         for file, state in edited.items():
@@ -264,6 +271,7 @@ class BM25:
         if full_idf:
             self._calculate_avgdl()
         self.save()
+
     def save(self):
         if not self.save_path.exists():
             self.save_path.mkdir(parents=True)
@@ -271,6 +279,7 @@ class BM25:
             raise Patherror("the save dir for lexical is dir")
         with open(self.save_path / "bm52.pkl","wb") as f:
                 pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
+
     def load(self) -> None:
         with open(self.save_path / "bm52.pkl", "rb") as f:
             bm25 = pickle.load(f)
@@ -278,6 +287,7 @@ class BM25:
         self.tokens = bm25.tokens
         self.avgdl = bm25.avgdl
         self.loaded = True
+
     @lru_cache
     def _calculate_term_score(self, token_id: int, doc: str) -> float:
         score = 0
@@ -287,6 +297,7 @@ class BM25:
         maqam = tf_qi + self.k1 * (1 - self.b + self.b * (D / self.avgdl))
         score = self.tokens.idf[token_id] * (bast / maqam)
         return score
+
     def _calculate_avgdl(self) -> None:
         doc_lengths = self.tokens.docs_length
         self.avgdl = sum([doc_lengths[doc] for doc in doc_lengths ]) / len(self.tokens.ids)

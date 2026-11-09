@@ -3,9 +3,11 @@ from pathlib import Path
 from rich import print
 import tqdm
 from langchain_text_splitters import Language, RecursiveCharacterTextSplitter
-
+from rich.traceback import install
 import hashlib
 from .enums import Filestatus
+install()
+
 
 class Chunker:
     def __init__(
@@ -34,6 +36,7 @@ class Chunker:
         for string in split_result:
             first_index = file_text.index(string)
             last_index = first_index + len(string);
+            # file_text = file_text[last_index:]
             hash_id = hashlib.sha256(
                 f"{str(file)}[{first_index}:{last_index}]|{file_text[first_index:last_index]}".encode()
                 ).hexdigest()
@@ -57,7 +60,7 @@ class Chunker:
         all_chunks = []
         processed = set()
         for file in files_progress:
-            if not self.is_valid_file(file) or "/tests/" in str(file):
+            if not self.is_valid_file(file):
                 continue
             files_progress.set_description(f"Chunking {file.name}:  ")
             all_chunks += self._chunk_file(file, max_chunk_size, processed)
@@ -71,9 +74,10 @@ class Chunker:
             chunks = json.load(file)
         old_files = {chunk["file_path"]:chunk["mtime"] for chunk in chunks}
         files_progress = tqdm.tqdm(data_path.rglob("*"))
+        to_ignor = set()
         edited = {}
         for file in files_progress:
-            if not self.is_valid_file(file) or "/tests/" in str(file) or len(file.read_text()) == 0:
+            if not self.is_valid_file(file) or len(file.read_text()) == 0:
                 continue
             if str(file) not in old_files :
                 edited[str(file)] = Filestatus.ADDED
@@ -86,7 +90,7 @@ class Chunker:
         new_chunks = []
         for file in edited:
             if edited[file] == Filestatus.ADDED or edited[file] == Filestatus.MODIFIED:
-                new_chunks += self._chunk_file(Path(file), max_chunk_size=max_chunk_size)
+                new_chunks += self._chunk_file(Path(file), max_chunk_size=max_chunk_size, to_ignor=to_ignor)
         filted_chunks = [chunk for chunk in chunks if chunk["file_path"] not in edited]
         filted_chunks += new_chunks
         with open(self.save_path, "w") as file:
@@ -99,7 +103,7 @@ class Chunker:
     
     def is_valid_file(self, file: Path):
         file_extension = file.name.split(".")[-1]
-        return file_extension in self.file_map
+        return file_extension in self.file_map and file.is_file()
 
     def get_file_lang(self, file: Path) -> Language:
         file_extension = file.name.split(".")[-1]
