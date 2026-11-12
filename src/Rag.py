@@ -13,6 +13,7 @@ from .models import (
     StudentSearchResults,
     StudentSearchResultsAndAnswer,
 )
+from .errors import MaxChunkSizeError
 from .semantic import VectorDb
 from functools import lru_cache
 from rich import print
@@ -24,22 +25,28 @@ import json
 
 class RAG:
     def __init__(self):
-        self.raw_path = Path("data/raw/vllm-0.10.1")
-        self.processed_path = self.raw_path.parent.parent / "processed"
+        self.raw_path = Path("data/raw")
+        self.processed_path =  Path("data/processed")
+        if not self.processed_path.exists():
+            self.processed_path.mkdir(parents=True, exist_ok=True)
         self.chunker = Chunker(self.processed_path)
         self.lexical = BM25(self.processed_path, self.chunker.save_path)
         self.semantic = VectorDb(self.processed_path, self.chunker.save_path)
 
-    def is_full_indexing(self) -> True:
+    def is_full_indexing(self, max_chunk_size: int) -> True:
         lexical_files = not self.lexical.save_path.exists()
         semantic_files = not self.semantic.save_path.exists()
         chunker_files = not self.chunker.save_path.exists()
-        if lexical_files or semantic_files or chunker_files:
+        same_chunk_size = not self.chunker._is_same_chunks_size(max_chunk_size)
+        if lexical_files or semantic_files or chunker_files or same_chunk_size:
             return True
         
 
     def index(self, max_chunk_size: int = 2000):
-        if self.is_full_indexing():
+        if not 200 < max_chunk_size <= 2000:
+            raise MaxChunkSizeError("max_chunk_size should be between 200 and 2000")
+
+        if self.is_full_indexing(max_chunk_size):
             self.chunker.chunk(self.raw_path, max_chunk_size)
             self.lexical.index()
             self.semantic.index()
@@ -48,6 +55,7 @@ class RAG:
             if len(edited[1]) > 0:
                 self.lexical.re_index(edited)
                 self.semantic.re_index(edited)
+
     def _rrf(self, results: list[list[int]], k=60):
         scores = {}
 
@@ -89,7 +97,10 @@ class RAG:
         rag_dataset = RagDataset(**json.loads(_dataset_path.read_text()))
         result: list[MinimalSearchResults] = []
         for Unansweredquestion in tqdm(
-            rag_dataset.rag_questions, desc="Processing data set"
+            rag_dataset.rag_questions,
+            desc="Processing data set",
+            colour="#0250f7",
+            ascii=" ▒"
         ):
             r = self.search(Unansweredquestion.question, k)
             r.question_id = Unansweredquestion.question_id
@@ -116,11 +127,8 @@ class RAG:
             context += f"- {file_text[source.first_character_index : source.last_character_index]}\n"
         answer = model.Generate_answer(query, context)
 
-        return MinimalAnswer(
-            question=minimal_source.question,
-            retrieved_sources=minimal_source.retrieved_sources,
-            answer=answer,
-        )
+        print(answer)
+
     def _answer(self,question_id:str, query: str ,minimal_source: list[MinimalSource], model: llm_model):
         context = ""
         for source in minimal_source:
@@ -143,7 +151,12 @@ class RAG:
         student_search_result = StudentSearchResults(**json.loads(search_results_file.read_text()))
         k = student_search_result.k
         results = []
-        for Unanswerd_question in tqdm(student_search_result.search_results):
+        for Unanswerd_question in tqdm(
+            student_search_result.search_results,
+            desc="answering data set",
+            colour="#0250f7",
+            ascii=" ▒"
+            ):
             question_answer = self._answer(
                 Unanswerd_question.question_id,
                 Unanswerd_question.question,

@@ -1,15 +1,12 @@
 import json
 from pathlib import Path
-from rich import print
 import tqdm
 from langchain_text_splitters import Language, RecursiveCharacterTextSplitter
-from rich.traceback import install
 import hashlib
 from .enums import Filestatus
-install()
-
-
+from .errors import EmptyData
 class Chunker:
+
     def __init__(
         self,
         processed_path: Path,
@@ -18,12 +15,14 @@ class Chunker:
         self.file_map = {
             "py": Language.PYTHON,
             "txt": Language.MARKDOWN,
-            "md": Language.MARKDOWN,
-            "cpp": Language.CPP,
-            "c": Language.C,
+            "md": Language.MARKDOWN
         }
 
-    def _chunk_file(self, file: Path, max_chunk_size: int, to_ignor: set):
+    def _chunk_file(self, file: Path, max_chunk_size: int, to_ignore: set):
+        try:
+            file_text = file.read_text()
+        except:
+            return []
         file_chunks = []
         language = self.get_file_lang(file)
         spliter = RecursiveCharacterTextSplitter.from_language(
@@ -31,19 +30,17 @@ class Chunker:
             chunk_size=max_chunk_size,
             chunk_overlap=int(max_chunk_size * 0.05),
         )
-        file_text = file.read_text()               
         split_result = spliter.split_text(file_text)
         for string in split_result:
             first_index = file_text.index(string)
-            last_index = first_index + len(string);
-            # file_text = file_text[last_index:]
+            last_index = first_index + len(string)
             hash_id = hashlib.sha256(
                 f"{str(file)}[{first_index}:{last_index}]|{file_text[first_index:last_index]}".encode()
                 ).hexdigest()
-            if hash_id in to_ignor:
+            if hash_id in to_ignore:
                 continue
             else:
-                to_ignor.add(hash_id)
+                to_ignore.add(hash_id)
             file_chunks += [
                 {
                     "id": hash_id,
@@ -55,7 +52,31 @@ class Chunker:
                 
             ]
         return file_chunks
+
+    def _is_same_chunks_size(self, max_chunk_size: int) -> bool:
+        file = self.save_path.parent / ".max_chunk_size"
+        try:
+            old_max_chunk_size = int(file.read_text())
+        except ValueError, FileNotFoundError:
+            return False
+        return old_max_chunk_size == max_chunk_size
+
+    def check_empy_files(self, data_path: Path) -> None:
+        files = data_path.rglob("*")
+        result = []
+        for file in files:
+            if not self.is_valid_file(file):
+                continue
+            result.append(len(file.read_text().strip()) == 0)
+        if all(result):
+            raise EmptyData("all files in data are empty")
+
+    def _save_max_chunk_size(self, max_chunk_size: int) -> None:
+        file = self.save_path.parent / ".max_chunk_size"
+        file.write_text(str(max_chunk_size))
+
     def chunk(self, data_path: Path, max_chunk_size: int):
+        self.check_empy_files(data_path)
         files_progress = tqdm.tqdm(data_path.rglob("*"))
         all_chunks = []
         processed = set()
@@ -68,13 +89,15 @@ class Chunker:
             self.save_path.parent.mkdir(parents=True)
         with open(self.save_path, "w") as file:
             json.dump(all_chunks, file, indent=4)
+        self._save_max_chunk_size(max_chunk_size)
 
     def re_chunk(self, data_path: Path, max_chunk_size: int):
+        self.check_empy_files(data_path)
         with open(self.save_path) as file:
             chunks = json.load(file)
         old_files = {chunk["file_path"]:chunk["mtime"] for chunk in chunks}
         files_progress = tqdm.tqdm(data_path.rglob("*"))
-        to_ignor = set()
+        to_ignore = set()
         edited = {}
         for file in files_progress:
             if not self.is_valid_file(file) or len(file.read_text()) == 0:
@@ -90,7 +113,7 @@ class Chunker:
         new_chunks = []
         for file in edited:
             if edited[file] == Filestatus.ADDED or edited[file] == Filestatus.MODIFIED:
-                new_chunks += self._chunk_file(Path(file), max_chunk_size=max_chunk_size, to_ignor=to_ignor)
+                new_chunks += self._chunk_file(Path(file), max_chunk_size=max_chunk_size, to_ignore=to_ignore)
         filted_chunks = [chunk for chunk in chunks if chunk["file_path"] not in edited]
         filted_chunks += new_chunks
         with open(self.save_path, "w") as file:
@@ -99,6 +122,7 @@ class Chunker:
                 file,
                 indent=4
             )
+        self._save_max_chunk_size(max_chunk_size)
         return len(filted_chunks) != len(chunks) , edited
     
     def is_valid_file(self, file: Path):

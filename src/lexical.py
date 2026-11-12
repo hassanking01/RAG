@@ -1,17 +1,11 @@
-import json
-import math
-import re
+import json, math, re, pickle, tqdm
 from collections import Counter
 from pathlib import Path
-from src.models import MinimalSource
-import pickle
 from .errors import Patherror
 from typing import cast, Any
 from .enums import Filestatus
-from rich import print
 from functools import lru_cache
 from heapq import nlargest
-import tqdm
 
 STOPWORDS_EN = [
     "a",

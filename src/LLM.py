@@ -1,12 +1,11 @@
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
-
+from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerBase
+import torch
 class llm_model:
     def __init__(self, model_name: str = "Qwen/Qwen3-0.6B"):
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            
+            torch_dtype=torch.bfloat16
             )
 
     def Generate_answer(self, query: str, context) -> str:
@@ -17,7 +16,6 @@ class llm_model:
                     "You are a helpful assistant that answers questions "
                     "using the provided context from the user's files.\n"
                     "Only use information from the povided context. "
-                    'If the context does not contain enough information, say "I don\'t know."'
                 ),
             },
             {
@@ -39,15 +37,15 @@ class llm_model:
             add_generation_prompt=True,
             return_tensors="pt",
             enable_thinking=False,
-
         )
 
         output = self.model.generate(
             **ids,
             max_new_tokens=180,
         )
-        return str(
-            self.tokenizer.decode(
+
+        return  self.tokenizer.decode(
+
                 output.tolist()[0][len(ids["input_ids"][0]) :], skip_special_tokens=True
             )
-        )
+        
