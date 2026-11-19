@@ -1,9 +1,8 @@
-from rich.traceback import install
+from pydantic import ValidationError
+from sympy import im
 from tqdm import tqdm
 
 from .chunker import Chunker
-from .lexical import BM25
-from .LLM import llm_model
 from .models import (
     AnsweredQuestion,
     MinimalAnswer,
@@ -13,25 +12,32 @@ from .models import (
     StudentSearchResults,
     StudentSearchResultsAndAnswer,
 )
-from .errors import MaxChunkSizeError
-from .semantic import VectorDb
+from .errors import (
+    MaxChunkSizeError,
+    EvaluationError,
+    Patherror,
+    ModelError
+)
+
 from functools import lru_cache
 from rich import print
 from pathlib import Path
 import json
-# install()
-
+from rich.traceback import install
+install()
 
 
 class RAG:
     def __init__(self):
+        from .lexical import BM25
+
         self.raw_path = Path("data/raw")
         self.processed_path =  Path("data/processed")
         if not self.processed_path.exists():
             self.processed_path.mkdir(parents=True, exist_ok=True)
         self.chunker = Chunker(self.processed_path)
         self.lexical = BM25(self.processed_path, self.chunker.save_path)
-        self.semantic = VectorDb(self.processed_path, self.chunker.save_path)
+        self.is_semantic_loaded = False
 
     def is_full_indexing(self, max_chunk_size: int) -> True:
         lexical_files = not self.lexical.save_path.exists()
@@ -43,6 +49,9 @@ class RAG:
         
 
     def index(self, max_chunk_size: int = 2000):
+        from .semantic import VectorDb
+        self.semantic = VectorDb(self.processed_path, self.chunker.save_path)
+        
         if not 200 < max_chunk_size <= 2000:
             raise MaxChunkSizeError("max_chunk_size should be between 200 and 2000")
 
@@ -77,6 +86,9 @@ class RAG:
         ]
 
     def search(self, query: str, k: int = 10):
+        if not self.is_semantic_loaded:
+            self._load_semantic()
+
         chunks: list[MinimalSource] = self._get_chunks()
         if not self.lexical.loaded:
             self.lexical.load()
@@ -93,6 +105,7 @@ class RAG:
         )
 
     def search_dataset(self, dataset_path: str, k: int, save_directory: str) -> None:
+        self.is_semantic_loaded = self._load_semantic()
         _dataset_path = Path(dataset_path)
         rag_dataset = RagDataset(**json.loads(_dataset_path.read_text()))
         result: list[MinimalSearchResults] = []
@@ -115,7 +128,10 @@ class RAG:
 
     @lru_cache
     def model(self):
+        from .LLM import llm_model
         return llm_model()
+
+    
     @lru_cache
     def answer(self, query: str, k: int = 10):
         model = self.model()
@@ -143,10 +159,15 @@ class RAG:
             retrieved_sources=minimal_source,
             answer=answer,
         )
-        
+
+    @lru_cache
+    def _load_semantic(self):
+        from .semantic import VectorDb
+        self.semantic = VectorDb(self.processed_path, self.chunker.save_path)
+        return True
 
     def answer_dataset(self, student_search_results_path: str, save_directory: str):
-        model = llm_model()
+        model = self.model()
         search_results_file = Path(student_search_results_path)
         student_search_result = StudentSearchResults(**json.loads(search_results_file.read_text()))
         k = student_search_result.k
@@ -172,23 +193,79 @@ class RAG:
         with open(save_result, "w") as file:
             json.dump(student_answer_resutl.model_dump(mode="json"), file, indent=4)
 
+    # TODO 
+    # if question is in student result and not in answer.json raise error 
+    # what i do now is wrong fix that
+    # if question is in data set but not in student result its okay 
+    def load_evaluation_models(
+            self
+            ,_dataset_path: Path,
+            _student_search_results_path: Path ) -> tuple[RagDataset, StudentSearchResults]:
+        try:
+            dataset = RagDataset.model_validate_json(_dataset_path.read_text())
+        except ValidationError:
+            raise ModelError(
+                f"{_dataset_path.name} is not valid RagDaraset model"
+            )
+        try:
+            student_search_results = StudentSearchResults.model_validate_json(_student_search_results_path.read_text())
+        except ValidationError:
+            raise ModelError(
+                f"{_student_search_results_path.name}"
+                " is not valid StudentSearchResults model"
+            )
+        return dataset, student_search_results
+
+    def test(self):
+        self.lexical.load()
+        from pympler import asizeof
+        size = asizeof.asizeof(self.lexical)
+
+        print(f"{size:,} bytes")
+        print(f"{size / 1024:.2f} KB")
+        print(f"{size / 1024**2:.2f} MB")
+
     def evaluate(self, student_search_results_path: str,  dataset_path: str):
         _student_search_results_path = Path(student_search_results_path)
         _dataset_path = Path(dataset_path)
-        dataset = RagDataset.model_validate_json(_dataset_path.read_text())
-        student_search_results = StudentSearchResults.model_validate_json(_student_search_results_path.read_text())
+        for file in [_student_search_results_path, _dataset_path]:
+            if not file.exists():
+                raise Patherror(
+                    f"{file.name} dose not exist"
+                )
+            if file.is_dir():
+                raise Patherror(
+                    f"{file.name} is a directory"
+                )
+
         questions_map:dict[str, list[MinimalSource]] = {}
+
+        dataset, student_search_results = self.load_evaluation_models(
+            _dataset_path,
+            _student_search_results_path
+        )
+        original_questions = set( _.question_id for _ in dataset.rag_questions)
+        
         for data in student_search_results.search_results:
             questions_map[data.question_id] = data.retrieved_sources
+
+        for question in questions_map:
+            if question not in original_questions:
+                raise EvaluationError(
+                    f"question with id: {question}"
+                    " not found in the dataset"
+                )
+
         recall_k = {1:0, 3:0, 5:0, 10:0}
-        min_k = student_search_results.k
+
         for qustion in dataset.rag_questions:
             if qustion.question_id not in questions_map:
-                raise ValueError("something bad happend")
+                continue
+
             for k in recall_k:
                 result = 0
                 for source in qustion.sources:
-                    for user_source in questions_map[qustion.question_id][:min(k, min_k)]:
+                    for user_source in questions_map[qustion.question_id][:k]:
                         if source.file_path == user_source.file_path:
                             first = max(source.first_character_index, user_source.first_character_index)
                             last = min(source.last_character_index, user_source.last_character_index)
@@ -201,9 +278,11 @@ class RAG:
                             IoO = intersection / union
                             if IoO >= 0.05:
                                 result += 1
-                    
-                recall_k[k] += result / len(qustion.sources) 
+                                break
+                if len(qustion.sources) > 0:
+                    recall_k[k] += result / len(qustion.sources) 
         print("🎯 Evaluation Results")
+
         print(f"📊 Questions evaluated: {len(questions_map)}")
         print("=" * 30, "\n")
         for k in recall_k:

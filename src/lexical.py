@@ -57,7 +57,6 @@ class Tokens:
     def _get_tokens(token: str) -> list[str]:
         def camel_case(token: str) -> list[str]:
             tokens = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", token)
-            tokens = re.sub(r"([A-Z])([A-Z][a-z])", r"\1 \2", token)
             return list(map(lambda x: x.lower(), tokens.split(" ")))
               
         result = []
@@ -93,11 +92,16 @@ class Tokens:
         idf: dict[int, float] = {}
 
         for index, document in enumerate(tqdm.tqdm(documents)):
-            file_name = str(Path(chunks[index]["file_path"]))
+            file_name = chunks[index]["file_path"]
             document = (file_name + " " + document)
         
-            splited: list[str] = re.findall(r"(?u)\b\w\w+\b", document)
-            splited = [splited[index] for index, part in enumerate(map(lambda x:x.lower(), splited)) if part not in STOPWORDS_EN and not part.isdigit()]
+            splited: list[str] = re.findall(r"\w\w+", document)
+            splited = [
+                splited[index] 
+                for index, part in enumerate(splited) 
+                if part not in STOPWORDS_EN
+                and not part.isdigit()
+            ]
             to_index = []
             for token in splited:
                 to_index += Tokens._get_tokens(token)
@@ -106,7 +110,6 @@ class Tokens:
             token_ids = []
             document_id = chunks[index]["id"]
             for item in count:
-                token_id = -1
                 if item not in vocab:
                     token_id = counter
                     vocab[item] = token_id
