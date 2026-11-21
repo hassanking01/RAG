@@ -7,7 +7,7 @@ if "__main__" == __name__:
         traceback.install()       
         result = fire.Fire(RAG)
     except KeyboardInterrupt:
-        print("bye")
+        print("good bye")
     except (MaxChunkSizeError, Patherror, EmptyData, EvaluationError) as e:
         print(
             f"[red]{e.__class__.__name__}[/red]:",

@@ -1,4 +1,5 @@
 import json, math, re, pickle, tqdm
+import token
 from collections import Counter
 from pathlib import Path
 from .errors import Patherror
@@ -6,6 +7,7 @@ from typing import cast, Any
 from .enums import Filestatus
 from functools import lru_cache
 from heapq import nlargest
+from tqdm import tqdm
 
 STOPWORDS_EN = [
     "a",
@@ -54,18 +56,17 @@ class Tokens:
         self.files_history: dict[str, list[str]] = files_history
 
     @staticmethod
-    def _get_tokens(token: str) -> list[str]:
-        def camel_case(token: str) -> list[str]:
-            tokens = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", token)
-            return list(map(lambda x: x.lower(), tokens.split(" ")))
+    def _handel_cases(token: str) -> list[str]:
               
         result = []
         result += [token.lower()]
         if "_" in token:
             for sub_token in token.split("_"):
                 result += [sub_token.lower()]
-        if re.search(r"([a-z]+)([A-Z])", token):
-            result += camel_case(token)
+        if re.search(r"([a-z]{2,})([A-Z][a-z]+)", token):
+            tokens = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", token)
+            for item in tokens.lower().split():
+                result += [item]
         return list(filter(lambda x:x not in STOPWORDS_EN and len(x) > 1 ,result))
 
 
@@ -77,12 +78,7 @@ class Tokens:
             return Path(file_name).read_text()
 
         chunks: list[Any] = json.loads(save_path.read_text())
-        documents = [
-            get_file_content(chunk["file_path"])[
-                chunk["first_character_index"] : chunk["last_character_index"]
-            ]
-            for chunk in chunks
-        ]
+
         files_history: dict[str, list[str]] = {}
         ids: dict[str, list[int]] = {}
         docs_length: dict[str, int] = {}
@@ -91,37 +87,36 @@ class Tokens:
         tf: dict[str, dict[str, int]] = {}
         idf: dict[int, float] = {}
 
-        for index, document in enumerate(tqdm.tqdm(documents)):
-            file_name = chunks[index]["file_path"]
-            document = (file_name + " " + document)
-        
-            splited: list[str] = re.findall(r"\w\w+", document)
-            splited = [
-                splited[index] 
-                for index, part in enumerate(splited) 
-                if part not in STOPWORDS_EN
-                and not part.isdigit()
+        for chunk in tqdm(
+            chunks,
+            desc="indexing tokens",
+            colour="#0250f7",
+            ascii=" ▒"):
+
+            file_name = chunk["file_path"]
+            document_id = chunk["id"]
+            files_history.setdefault(file_name, [])
+            chunk_content = get_file_content(file_name)[
+                chunk["first_character_index"]:
+                chunk["last_character_index"]
             ]
-            to_index = []
-            for token in splited:
-                to_index += Tokens._get_tokens(token)
+            document = (Path(file_name).name + " " + chunk_content)
+        
+            to_index = Tokens.get_tokens(document)
             count = Counter(to_index)
             length = 0
             token_ids = []
-            document_id = chunks[index]["id"]
             for item in count:
                 if item not in vocab:
-                    token_id = counter
-                    vocab[item] = token_id
+                    vocab[item] = counter
                     counter += 1
-                else:
-                    token_id = vocab[item]
+
+                token_id = vocab[item]
                 tf.setdefault(token_id, {})
                 tf[token_id][document_id] = count[item]
                 length += count[item]
                 token_ids += [token_id]
-            file_name = chunks[index]["file_path"]
-            files_history.setdefault(file_name, [])
+
             ids[document_id] = token_ids
             docs_length[document_id] = length
             files_history[file_name] += [document_id]
@@ -167,6 +162,7 @@ class Tokens:
                     else:
                         affected_tokens.add(token_id)
                 self.files_history[file].remove(doc)
+
         for doc in to_add:
             self.files_history[file] += [doc]
             first_index = this_file_chunks[doc]["first_character_index"]
@@ -174,6 +170,7 @@ class Tokens:
             tokens = Tokens.get_tokens(Path(file).read_text()[first_index:last_index])
             counter = Counter(tokens)
             self.ids.setdefault(doc, [])
+            self.docs_length.setdefault(doc, 0)
             for token in counter:
                 if token in self.vocab:
                     token_id = self.vocab[token]
@@ -185,6 +182,7 @@ class Tokens:
                 self.tf.setdefault(token_id, {})
                 self.tf[token_id][doc] = counter[token]
                 self.ids[doc] += [token_id]
+                self.docs_length[doc] += counter[token]
             self.files_history[file] += [doc]
         return affected_tokens
                 
@@ -225,11 +223,14 @@ class Tokens:
                 self.idf[token_id] = math.log(1 + (N - df + 0.5) / (df + 0.5))
 
     @staticmethod
-    def get_tokens(query: str) -> list[int]:
-        query = query.lower()
-        splited = re.findall(r"(?u)\b\w\w+\b", query)
-        splited = [part for part in splited if part not in STOPWORDS_EN]
-        return splited
+    def get_tokens(query: str) -> list[str]:
+        result = []
+        splited: list[str] = re.findall(r"\w\w+", query)
+        for token in splited:
+            if token.lower() in STOPWORDS_EN or token.isdigit():
+                continue
+            result += Tokens._handel_cases(token)
+        return result
 
 class BM25:
     def __init__(
@@ -245,7 +246,6 @@ class BM25:
         self.b = b
         self.loaded = False
         self.avgdl: float = 0.0
-        self.tokens: Tokens = Tokens([], [], [], [], [], [] ,[])
 
     def index(self) -> None:
         self.tokens= Tokens.tokenize(self.chunks_path)
@@ -265,8 +265,7 @@ class BM25:
                 case Filestatus.ADDED:
                     affected_tokens.union(self.tokens.add_tokens(file, self.chunks_path))
         self.tokens.recalculat_idf(affected_tokens=affected_tokens, is_full_idf=full_idf)
-        if full_idf:
-            self._calculate_avgdl()
+        self._calculate_avgdl()
         self.save()
 
     def save(self):

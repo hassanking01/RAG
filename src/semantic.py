@@ -8,6 +8,7 @@ from functools import lru_cache
 import pickle
 from .errors import Patherror
 from typing import cast
+import os
 
 class VectorDb:
     def __init__(
@@ -35,7 +36,8 @@ class VectorDb:
             file_content = self.get_file_content(data["file_path"])
             documents += [
                 file_content[
-                    data["first_character_index"] : data["last_character_index"]
+                    data["first_character_index"]:
+                    data["last_character_index"]
                 ]
             ]
             self.metadata += [
@@ -44,14 +46,32 @@ class VectorDb:
             self.files_history.setdefault(data["file_path"], [])
             self.files_history[data["file_path"]] += [data["id"]]
         self._embeddings = self.model.encode(documents, show_progress_bar=True)
-        # self._embeddings = numpy.load(self.save_path / "embeddings.npy" )
         self.save()
 
-    def save(self):
+    def check_save_files(self):
         if not self.save_path.exists():
             self.save_path.mkdir(parents=True)
         if self.save_path.is_file():
-            raise Patherror("the save dir for lexical is dir")
+            raise Patherror(
+                "the save directory for semantic"
+                " is alreay existing file"
+                )
+        if (self.save_path / "metadata.pkl").exists():
+            if not os.access(self.save_path / "metadata.pkl" , os.R_OK | os.W_OK):
+                raise Patherror(
+                    f"the save file for metadata [{self.save_path / "metadata.pkl"}]"
+                    " does not have Read and Write"
+                    " permissions delete it and try again"
+                    )
+        if (self.save_path / "embeddings.npy").exists():
+            if not os.access(self.save_path / "embeddings.npy" , os.R_OK | os.W_OK):
+                raise Patherror(
+                    f"the save file for embeddings [{self.save_path / "embeddings.npy"}]"
+                    " does not have Read and Write"
+                    " permissions delete it and try again"
+                    )
+    def save(self):
+        self.check_save_files()
         with open(self.save_path / "metadata.pkl","wb") as f:
                 pickle.dump((self.files_history, self.metadata), f, protocol=pickle.HIGHEST_PROTOCOL)
         numpy.save(self.save_path / "embeddings.npy", self._embeddings)
@@ -138,6 +158,7 @@ class VectorDb:
         result = numpy.vstack((self._embeddings, new_embiddings))
         self._embeddings = result
         self.save()
+
     def calculate_cos_sim(self, vector_a, vector_q) -> float:
         mag_a = numpy.linalg.norm(vector_a)
         mag_q = numpy.linalg.norm(vector_q)

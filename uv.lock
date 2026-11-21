@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.14"
 resolution-markers = [
     "sys_platform == 'win32'",
@@ -374,6 +374,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/cc/28/c14e053b6762b1044f34a13aab6859bbf40456d37d23aa286ac24cfd9a5d/executing-2.2.1.tar.gz", hash = "sha256:3632cc370565f6648cc328b32435bd120a1e4ebb20c77e3fdde9a13cd1e533c4", size = 1129488, upload-time = "2025-09-01T09:48:10.866Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c1/ea/53f2148663b321f21b5a606bd5f191517cf40b7072c0497d3c92c4a13b1e/executing-2.2.1-py2.py3-none-any.whl", hash = "sha256:760643d3452b4d777d295bb167ccc74c64a81df23fb5e08eff250c425a4b2017", size = 28317, upload-time = "2025-09-01T09:48:08.5Z" },
+]
+
+[[package]]
+name = "fancycompleter"
+version = "0.11.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4e/4c/d11187dee93eff89d082afda79b63c79320ae1347e49485a38f05ad359d0/fancycompleter-0.11.1.tar.gz", hash = "sha256:5b4ad65d76b32b1259251516d0f1cb2d82832b1ff8506697a707284780757f69", size = 341776, upload-time = "2025-05-26T12:59:11.045Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/30/c3/6f0e3896f193528bbd2b4d2122d4be8108a37efab0b8475855556a8c4afa/fancycompleter-0.11.1-py3-none-any.whl", hash = "sha256:44243d7fab37087208ca5acacf8f74c0aa4d733d04d593857873af7513cdf8a6", size = 11207, upload-time = "2025-05-26T12:59:09.857Z" },
 ]
 
 [[package]]
@@ -1352,6 +1361,19 @@ wheels = [
 ]
 
 [[package]]
+name = "pdbpp"
+version = "0.12.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "fancycompleter" },
+    { name = "pygments" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/95/8d/dbc2c26f9c947e3d6df82d3ee7711fb52a92000177cea22fd3e428dc0429/pdbpp-0.12.1.tar.gz", hash = "sha256:932cc5963760105e33607f44a1a3b83d28096d7dbf055b77b527c5c70a1dafef", size = 77358, upload-time = "2026-02-23T14:23:44.993Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/05/4e/0703722c46447fa03c9425386b3ef3e90254a7c1eb5da654c3c33b210317/pdbpp-0.12.1-py3-none-any.whl", hash = "sha256:3828809519439f468c9475c4c2cbb3899f2f5ba40e79c207d90eabe4c2373f5e", size = 30659, upload-time = "2026-02-23T14:23:43.66Z" },
+]
+
+[[package]]
 name = "pexpect"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1752,6 +1774,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "ipykernel" },
+    { name = "pdbpp" },
 ]
 
 [package.metadata]
@@ -1774,7 +1797,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "ipykernel", specifier = ">=7.4.0" }]
+dev = [
+    { name = "ipykernel", specifier = ">=7.4.0" },
+    { name = "pdbpp", specifier = ">=0.12.1" },
+]
 
 [[package]]
 name = "regex"

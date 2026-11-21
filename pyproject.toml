@@ -27,6 +27,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "ipykernel>=7.4.0",
+    "pdbpp>=0.12.1",
 ]
 
 [[tool.uv.index]]

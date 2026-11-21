@@ -1,10 +1,7 @@
 from pydantic import ValidationError
-from sympy import im
 from tqdm import tqdm
-
 from .chunker import Chunker
 from .models import (
-    AnsweredQuestion,
     MinimalAnswer,
     MinimalSearchResults,
     MinimalSource,
@@ -216,14 +213,6 @@ class RAG:
             )
         return dataset, student_search_results
 
-    def test(self):
-        self.lexical.load()
-        from pympler import asizeof
-        size = asizeof.asizeof(self.lexical)
-
-        print(f"{size:,} bytes")
-        print(f"{size / 1024:.2f} KB")
-        print(f"{size / 1024**2:.2f} MB")
 
     def evaluate(self, student_search_results_path: str,  dataset_path: str):
         _student_search_results_path = Path(student_search_results_path)
