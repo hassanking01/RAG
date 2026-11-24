@@ -13,7 +13,8 @@ from .errors import (
     MaxChunkSizeError,
     EvaluationError,
     Patherror,
-    ModelError
+    ModelError,
+    EmptyData
 )
 
 from functools import lru_cache
@@ -36,7 +37,7 @@ class RAG:
         self.lexical = BM25(self.processed_path, self.chunker.save_path)
         self.is_semantic_loaded = False
 
-    def is_full_indexing(self, max_chunk_size: int) -> True:
+    def _is_full_indexing(self, max_chunk_size: int) -> True:
         lexical_files = not self.lexical.save_path.exists()
         semantic_files = not self.semantic.save_path.exists()
         chunker_files = not self.chunker.save_path.exists()
@@ -52,15 +53,18 @@ class RAG:
         if not 200 < max_chunk_size <= 2000:
             raise MaxChunkSizeError("max_chunk_size should be between 200 and 2000")
 
-        if self.is_full_indexing(max_chunk_size):
+        if self._is_full_indexing(max_chunk_size):
             self.chunker.chunk(self.raw_path, max_chunk_size)
             self.lexical.index()
-            self.semantic.index()
+            # self.semantic.index()
         else:
             edited = self.chunker.re_chunk(self.raw_path, max_chunk_size=max_chunk_size)
+            from time import sleep
+            print(edited[1])
+            sleep(5)
             if len(edited[1]) > 0:
                 self.lexical.re_index(edited)
-                self.semantic.re_index(edited)
+                # self.semantic.re_index(edited)
 
     def _rrf(self, results: list[list[int]], k=60):
         scores = {}
@@ -83,6 +87,11 @@ class RAG:
         ]
 
     def search(self, query: str, k: int = 10):
+        query = str(query)
+        if not query.strip():
+            raise EmptyData("the query is an empty string")
+        if k <= 0:
+            raise ValueError("the top k should be positive number")
         if not self.is_semantic_loaded:
             self._load_semantic()
 

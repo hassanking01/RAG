@@ -135,12 +135,8 @@ class Tokens:
         for doc in docs:
             for token_id in self.ids[doc]:
                 _ = self.tf[token_id].pop(doc, None)
-                if len(self.tf[token_id]) == 0:
-                    _ = self.tf.pop(token_id, None)
-                    _ = self.idf.pop(token_id)
-                else:
-                    affected_tokens.add(token_id)
-
+                affected_tokens.add(token_id)
+        return affected_tokens
     def modify_tokens(self, file: str, chunks_path: Path) -> set[int]:
         chunks = json.loads(chunks_path.read_text())
         this_file_chunks = { chunk["id"]:chunk for chunk in chunks if chunk["file_path"] == file}        
@@ -156,11 +152,7 @@ class Tokens:
             if doc in to_remove:
                 for token_id in self.ids[doc]:
                     _ = self.tf[token_id].pop(doc, None)
-                    if len(self.tf[token_id]) == 0:
-                        _ = self.tf.pop(token_id, None)
-                        _ = self.idf.pop(token_id, None)
-                    else:
-                        affected_tokens.add(token_id)
+                    affected_tokens.add(token_id)
                 self.files_history[file].remove(doc)
 
         for doc in to_add:
@@ -183,19 +175,20 @@ class Tokens:
                 self.tf[token_id][doc] = counter[token]
                 self.ids[doc] += [token_id]
                 self.docs_length[doc] += counter[token]
-            self.files_history[file] += [doc]
         return affected_tokens
                 
     def add_tokens(self, file: str, chunks_path: Path) -> None:
         chunks = json.loads(chunks_path.read_text())
         this_file_chunks = {chunk["id"]:chunk for chunk in chunks if chunk["file_path"] == file}
         affected_tokens = set()
+        self.files_history.setdefault(file, [])
         for doc in this_file_chunks:
             self.files_history[file] += [doc]
             first_index = this_file_chunks[doc]["first_character_index"]
             last_index = this_file_chunks[doc]["last_character_index"]
             tokens = Tokens.get_tokens(Path(file).read_text()[first_index:last_index])
             self.ids.setdefault(doc, [])
+            self.docs_length.setdefault(doc, 0)
             counter = Counter(tokens)
             for token in counter:
                 if token in self.vocab:
@@ -207,8 +200,9 @@ class Tokens:
                 affected_tokens.add(token_id)
                 self.tf.setdefault(token_id, {})
                 self.tf[token_id][doc] = counter[token]
+                self.docs_length[doc] += counter[token]
                 self.ids[doc] += [token_id]
-            self.files_history[file] += [doc]
+            
         return affected_tokens
 
     def recalculat_idf(self, affected_tokens: set[int], is_full_idf: bool) -> None:

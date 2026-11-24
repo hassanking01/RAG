@@ -8,7 +8,7 @@ if "__main__" == __name__:
         result = fire.Fire(RAG)
     except KeyboardInterrupt:
         print("good bye")
-    except (MaxChunkSizeError, Patherror, EmptyData, EvaluationError) as e:
+    except (MaxChunkSizeError, Patherror, EmptyData, EvaluationError, ValueError) as e:
         print(
             f"[red]{e.__class__.__name__}[/red]:",
             e)
