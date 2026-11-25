@@ -8,6 +8,7 @@ from typing import Any, cast
 
 
 class llm_model:
+    """Load a language model and generate answers from retrieved context."""
     def __init__(self, model_name: str = "Qwen/Qwen3-0.6B"):
         """Load the tokenizer and language model."""
         self.tokenizer: PreTrainedTokenizerBase = (

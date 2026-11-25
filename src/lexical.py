@@ -49,6 +49,7 @@ STOPWORDS_EN = [
 
 
 class Tokens:
+    """Store token statistics used by the lexical search index."""
     def __init__(
         self, ids, vocab, tf, idf, docs_length, counter, files_history
     ):
@@ -263,6 +264,7 @@ class Tokens:
 
 
 class BM25:
+    """Build and search a BM25 lexical index over document chunks."""
     def __init__(
         self,
         processed_path: Path,

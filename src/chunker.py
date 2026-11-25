@@ -13,6 +13,7 @@ from .errors import EmptyData
 
 
 class Chunker:
+    """Split supported files into indexed chunks with source offsets."""
     def __init__(
         self,
         processed_path: Path,

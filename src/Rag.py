@@ -33,6 +33,7 @@ install()
 
 
 class RAG:
+    """Coordinate chunking, retrieval, evaluation, and answer generation."""
     def __init__(self):
         """Initialize the RAG pipeline and its indexes."""
         from .lexical import BM25

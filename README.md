@@ -162,13 +162,13 @@ uv run -m src index --max_chunk_size 1000
 ### Search for relevant chunks
 
 ```bash
-uv run -m src search "How does the scheduler work?" --k 5
+uv run -m src search "how to setup vLLM?" --k 5
 ```
 
 ### Ask a question and generate an answer
 
 ```bash
-uv run -m src answer "How does the scheduler work?" --k 5
+uv run -m src answer "how does vLLM work?" --k 5
 ```
 
 ### Run the API
@@ -198,10 +198,9 @@ make clean     # remove Python cache directories
 1. [Retrieval Augmented Generation — DeepLearning.AI](https://www.deeplearning.ai/courses/retrieval-augmented-generation) — course used to study RAG architecture, chunking, retrieval, hybrid search, evaluation, and deployment considerations.
 2. [Okapi BM25 — Wikipedia](https://en.wikipedia.org/wiki/Okapi_BM25) — reference for the BM25 ranking function used by the lexical retriever.
 3. [Semantic Search — Sentence Transformers](https://www.sbert.net/examples/sentence_transformer/applications/semantic-search/README.html) — reference for embeddings, semantic search, and cosine-similarity retrieval.
-4. [RecursiveCharacterTextSplitter — LangChain reference](https://reference.langchain.com/python/langchain-text-splitters/character/RecursiveCharacterTextSplitter) — useful reference for chunking and preserving meaningful text boundaries.
-5. [Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks](https://arxiv.org/abs/2005.11401) — research paper describing the RAG approach of combining retrieval with generation.
-6. [YouTube search: RAG and AI chatbot tutorials](https://www.youtube.com/results?search_query=RAG+AI+chatbot+embeddings+BM25) — video tutorials used for practical explanations of AI chatbots, embeddings, and retrieval systems.
+4. [Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks](https://arxiv.org/abs/2005.11401) — research paper describing the RAG approach of combining retrieval with generation.
+5. [YouTube search: RAG and AI chatbot tutorials](https://www.youtube.com/results?search_query=RAG+AI+chatbot+embeddings+BM25) — video tutorials used for practical explanations of AI chatbots, embeddings, and retrieval systems.
 
 ### Use of AI
 
-AI was used as a learning and writing aid. It helped explain difficult concepts such as embeddings, vector databases, semantic similarity, BM25, and the interaction between retrieval and generation. It was also used to help draft and organize this README. The project implementation, testing, design choices, and final verification remain the responsibility of the author.
+AI was used as a learning and writing aid. It helped explain difficult concepts such as embeddings, vector databases, semantic similarity, BM25, and the interaction between retrieval and generation. It was also used to help draft and organize this README.

@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 
 class MinimalSource(BaseModel):
+    """Represent the location of a retrieved source chunk."""
     file_path: str
     first_character_index: int
     last_character_index: int
@@ -15,20 +16,24 @@ class MinimalSource(BaseModel):
 
 
 class UnansweredQuestion(BaseModel):
+    """Represent a question before an answer is generated."""
     question_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     question: str
 
 
 class AnsweredQuestion(UnansweredQuestion):
+    """Represent a question together with its reference answer and sources."""
     sources: List[MinimalSource]
     answer: str
 
 
 class RagDataset(BaseModel):
+    """Represent a dataset containing RAG questions and answers."""
     rag_questions: List[AnsweredQuestion | UnansweredQuestion]
 
 
 class MinimalSearchResults(BaseModel):
+    """Represent the source chunks retrieved for a question."""
     question_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     question: str
     retrieved_sources: List[MinimalSource]
@@ -45,14 +50,17 @@ class MinimalSearchResults(BaseModel):
 
 
 class MinimalAnswer(MinimalSearchResults):
+    """Represent retrieved sources together with a generated answer."""
     answer: str
 
 
 class StudentSearchResults(BaseModel):
+    """Represent retrieval results for a complete student search."""
     search_results: List[MinimalSearchResults]
     k: int
 
 
 class StudentSearchResultsAndAnswer(BaseModel):
+    """Represent retrieval results and answers for a complete dataset."""
     search_results: List[MinimalAnswer]
     k: int

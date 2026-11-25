@@ -13,6 +13,7 @@ from .errors import Patherror
 
 
 class VectorDb:
+    """Store and search semantic embeddings for document chunks."""
     def __init__(
         self,
         processed_path: Path,

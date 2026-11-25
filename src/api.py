@@ -8,6 +8,7 @@ rag: RAG = RAG()
 
 
 class Query(BaseModel):
+    """Represent a question received by the API."""
     question: str
 
 
