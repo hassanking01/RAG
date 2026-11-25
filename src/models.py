@@ -10,6 +10,7 @@ class MinimalSource(BaseModel):
     last_character_index: int
 
     def __len__(self) -> int:
+        """Return the source range length."""
         return self.last_character_index - self.first_character_index
 
 class UnansweredQuestion(BaseModel):
@@ -31,6 +32,7 @@ class MinimalSearchResults(BaseModel):
     question: str
     retrieved_sources: List[MinimalSource]
     def __str__(self):
+        """Return the retrieved source locations as text."""
         result = ""
         for search in self.retrieved_sources:
             result += f"{search.file_path} [{search.first_character_index}:{search.last_character_index}]\n"

@@ -2,6 +2,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenize
 import torch
 class llm_model:
     def __init__(self, model_name: str = "Qwen/Qwen3-0.6B"):
+        """Load the tokenizer and language model."""
         self.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
@@ -9,6 +10,7 @@ class llm_model:
             )
 
     def Generate_answer(self, query: str, context) -> str:
+        """Generate an answer from a question and context."""
         messages = [
             {
                 "role": "system",

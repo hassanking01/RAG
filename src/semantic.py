@@ -17,6 +17,7 @@ class VectorDb:
         chunks_path: Path,
         model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
     ) -> None:
+        """Initialize the semantic vector database."""
         self.model: SentenceTransformer = SentenceTransformer(model_name)
         self.chunks_path = chunks_path
         self.save_path = processed_path / "semantic"
@@ -26,9 +27,11 @@ class VectorDb:
 
     @lru_cache(maxsize=1)
     def get_file_content(self, file: str):
+        """Read and return a file's text."""
         return Path(file).read_text()
 
     def index(self):
+        """Create and save embeddings for all chunks."""
 
         chunks: list[dict[str, Any]] = json.loads(self.chunks_path.read_text())
         documents = []
@@ -49,6 +52,7 @@ class VectorDb:
         self.save()
 
     def check_save_files(self):
+        """Check that semantic index files can be saved."""
         if not self.save_path.exists():
             self.save_path.mkdir(parents=True)
         if self.save_path.is_file():
@@ -70,13 +74,16 @@ class VectorDb:
                     " does not have Read and Write"
                     " permissions delete it and try again"
                     )
+
     def save(self):
+        """Save semantic metadata and embeddings to disk."""
         self.check_save_files()
         with open(self.save_path / "metadata.pkl","wb") as f:
                 pickle.dump((self.files_history, self.metadata), f, protocol=pickle.HIGHEST_PROTOCOL)
         numpy.save(self.save_path / "embeddings.npy", self._embeddings)
 
     def load(self) -> None:
+        """Load semantic metadata and embeddings from disk."""
         with open(self.save_path / "metadata.pkl", "rb") as f:
             t_metadata = pickle.load(f)
         t_metadata = cast(tuple[dict[str, list[str]], list[list[str]]], t_metadata)
@@ -86,6 +93,7 @@ class VectorDb:
 
     @lru_cache
     def _get_chunks(self, file="") -> list[dict[str, Any]]:
+        """Return saved chunks, optionally filtered by file."""
         chunks = json.loads(self.chunks_path.read_text())
         if not file:
             return { chunk["id"]:chunk for chunk in chunks}
@@ -93,10 +101,12 @@ class VectorDb:
             return { chunk["id"]:chunk for chunk in chunks if chunk["file_path"] == file}
 
     def _get_chunk_data(self, chunk_id: str):
+        """Return chunk data for a chunk ID."""
         chunks = self._get_chunks()
         return chunks[chunk_id]
 
     def _get_modified(self, file) -> tuple[list, list]:
+        """Return added and removed chunks for a modified file."""
         this_file_chunks = self._get_chunks(file)        
         old_docs = set(self.files_history[file])
         new_docs = set(chunk_id for chunk_id in this_file_chunks)
@@ -105,10 +115,12 @@ class VectorDb:
         return list(to_add) , list(to_remove)
     
     def _get_added(self, file) -> list[str]:
+        """Return chunk IDs belonging to a new file."""
         this_file_chunks = self._get_chunks(file)        
         return [chunk_id for chunk_id in this_file_chunks]
 
     def re_index(self, rec_result: tuple[bool, dict[str, Filestatus]]) :
+        """Update embeddings after files change."""
         self.load()
         _ , to_reindex = rec_result
         to_remove = []
@@ -142,24 +154,29 @@ class VectorDb:
         for index in to_keep:
             cleaned_metadata += [self.metadata[index]]
         self.metadata = cleaned_metadata
-
-        new_chunks = [self._get_chunk_data(chunk_id) for chunk_id in to_add]
-        new_metadata = []
-        new_docs = []
-        for chunk in new_chunks:
-            new_metadata += [[chunk["id"], chunk["file_path"]]]
-            new_docs += [
-                Path(chunk["file_path"]).read_text()[
-                    chunk["first_character_index"] : chunk["last_character_index"]
-                ]
-                ]
-        self.metadata.extend(new_metadata)
-        new_embiddings = self.model.encode(new_docs, show_progress_bar=True)
-        result = numpy.vstack((self._embeddings, new_embiddings))
-        self._embeddings = result
+        if len(to_add) > 0:
+            new_chunks = [
+                self._get_chunk_data(chunk_id)
+                for chunk_id in to_add
+            ]
+            new_metadata = []
+            new_docs = []
+            for chunk in new_chunks:
+                new_metadata += [[chunk["id"], chunk["file_path"]]]
+                new_docs += [
+                    Path(chunk["file_path"]).read_text()[
+                        chunk["first_character_index"]:
+                        chunk["last_character_index"]
+                    ]
+                    ]
+            self.metadata.extend(new_metadata)
+            new_embiddings = self.model.encode(new_docs, show_progress_bar=True)
+            result = numpy.vstack((self._embeddings, new_embiddings))
+            self._embeddings = result
         self.save()
 
     def calculate_cos_sim(self, vector_a, vector_q) -> float:
+        """Calculate cosine similarity between two vectors."""
         mag_a = numpy.linalg.norm(vector_a)
         mag_q = numpy.linalg.norm(vector_q)
         if not mag_a or not mag_q:
@@ -169,6 +186,7 @@ class VectorDb:
         return float(bast / maqam)
 
     def search(self, query: str, k: int) -> list[int]:
+        """Return positions of the most similar chunks."""
         query_embedding = self.model.encode(query)
         if not self._is_loaded:
             self._embeddings = numpy.load(self.save_path)

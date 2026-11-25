@@ -27,6 +27,7 @@ install()
 
 class RAG:
     def __init__(self):
+        """Initialize the RAG pipeline and its indexes."""
         from .lexical import BM25
 
         self.raw_path = Path("data/raw")
@@ -38,6 +39,7 @@ class RAG:
         self.is_semantic_loaded = False
 
     def _is_full_indexing(self, max_chunk_size: int) -> True:
+        """Return whether a full index must be built."""
         lexical_files = not self.lexical.save_path.exists()
         semantic_files = not self.semantic.save_path.exists()
         chunker_files = not self.chunker.save_path.exists()
@@ -47,6 +49,7 @@ class RAG:
         
 
     def index(self, max_chunk_size: int = 2000):
+        """Build a new index or update the existing one."""
         from .semantic import VectorDb
         self.semantic = VectorDb(self.processed_path, self.chunker.save_path)
         
@@ -56,17 +59,15 @@ class RAG:
         if self._is_full_indexing(max_chunk_size):
             self.chunker.chunk(self.raw_path, max_chunk_size)
             self.lexical.index()
-            # self.semantic.index()
+            self.semantic.index()
         else:
             edited = self.chunker.re_chunk(self.raw_path, max_chunk_size=max_chunk_size)
-            from time import sleep
-            print(edited[1])
-            sleep(5)
             if len(edited[1]) > 0:
                 self.lexical.re_index(edited)
-                # self.semantic.re_index(edited)
+                self.semantic.re_index(edited)
 
     def _rrf(self, results: list[list[int]], k=60):
+        """Combine ranked results using reciprocal rank fusion."""
         scores = {}
 
         for result_list in results:
@@ -81,12 +82,14 @@ class RAG:
 
     @lru_cache
     def _get_chunks(self):
+        """Load all saved chunks as source models."""
         return[
             MinimalSource(**data)
             for data in json.loads(self.chunker.save_path.read_text())
         ]
 
     def search(self, query: str, k: int = 10):
+        """Search indexed files and return the best sources."""
         query = str(query)
         if not query.strip():
             raise EmptyData("the query is an empty string")
@@ -111,6 +114,7 @@ class RAG:
         )
 
     def search_dataset(self, dataset_path: str, k: int, save_directory: str) -> None:
+        """Search every question in a dataset and save the results."""
         self.is_semantic_loaded = self._load_semantic()
         _dataset_path = Path(dataset_path)
         rag_dataset = RagDataset(**json.loads(_dataset_path.read_text()))
@@ -134,12 +138,14 @@ class RAG:
 
     @lru_cache
     def model(self):
+        """Create and cache the language model."""
         from .LLM import llm_model
         return llm_model()
 
     
     @lru_cache
     def answer(self, query: str, k: int = 10):
+        """Generate an answer using search results as context."""
         model = self.model()
         minimal_source: MinimalSearchResults = self.search(query, k)
         context = ""
@@ -152,6 +158,7 @@ class RAG:
         print(answer)
 
     def _answer(self,question_id:str, query: str ,minimal_source: list[MinimalSource], model: llm_model):
+        """Generate a modeled answer for one question."""
         context = ""
         for source in minimal_source:
             file = Path(source.file_path)
@@ -168,11 +175,13 @@ class RAG:
 
     @lru_cache
     def _load_semantic(self):
+        """Create and cache the semantic index object."""
         from .semantic import VectorDb
         self.semantic = VectorDb(self.processed_path, self.chunker.save_path)
         return True
 
     def answer_dataset(self, student_search_results_path: str, save_directory: str):
+        """Answer saved search results and write the answers."""
         model = self.model()
         search_results_file = Path(student_search_results_path)
         student_search_result = StudentSearchResults(**json.loads(search_results_file.read_text()))
@@ -207,6 +216,7 @@ class RAG:
             self
             ,_dataset_path: Path,
             _student_search_results_path: Path ) -> tuple[RagDataset, StudentSearchResults]:
+        """Load and validate the dataset and search result models."""
         try:
             dataset = RagDataset.model_validate_json(_dataset_path.read_text())
         except ValidationError:
@@ -224,6 +234,7 @@ class RAG:
 
 
     def evaluate(self, student_search_results_path: str,  dataset_path: str):
+        """Calculate recall for saved search results."""
         _student_search_results_path = Path(student_search_results_path)
         _dataset_path = Path(dataset_path)
         for file in [_student_search_results_path, _dataset_path]:

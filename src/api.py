@@ -11,6 +11,7 @@ class Query(BaseModel):
 
 @app.get("/get_response")
 async def get_response(payload: Query):
+    """Return a RAG answer for an API question."""
     global rag
     result = rag.answer(payload.question, k=5)
     return result.model_dump(mode="json")
