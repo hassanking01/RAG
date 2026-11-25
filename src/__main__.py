@@ -4,7 +4,12 @@ if "__main__" == __name__:
         import fire
         from .Rag import RAG
         from rich import print
-        from .errors import MaxChunkSizeError, Patherror, EmptyData, EvaluationError
+        from .errors import (
+            MaxChunkSizeError,
+            Patherror,
+            EmptyData,
+            EvaluationError,
+        )
         rag = RAG()
 
         commands = {
@@ -20,7 +25,11 @@ if "__main__" == __name__:
 
     except KeyboardInterrupt:
         print("good bye")
-    except (MaxChunkSizeError, Patherror, EmptyData, EvaluationError, ValueError) as e:
-        print(
-            f"[red]{e.__class__.__name__}[/red]:",
-            e)
+    except (
+        MaxChunkSizeError,
+        Patherror,
+        EmptyData,
+        EvaluationError,
+        ValueError,
+    ) as e:
+        print(f"[red]{e.__class__.__name__}[/red]:", e)

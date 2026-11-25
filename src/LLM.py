@@ -1,13 +1,22 @@
-from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerBase
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    PreTrainedTokenizerBase,
+)
 import torch
+from typing import Any, cast
+
+
 class llm_model:
     def __init__(self, model_name: str = "Qwen/Qwen3-0.6B"):
         """Load the tokenizer and language model."""
-        self.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForCausalLM.from_pretrained(
+        self.tokenizer: PreTrainedTokenizerBase = (
+            AutoTokenizer.from_pretrained(model_name)
+        )
+        self.model: Any = AutoModelForCausalLM.from_pretrained(
             model_name,
             torch_dtype=torch.bfloat16
-            )
+        )
 
     def Generate_answer(self, query: str, context) -> str:
         """Generate an answer from a question and context."""
@@ -33,7 +42,7 @@ class llm_model:
             },
         ]
 
-        ids = self.tokenizer.apply_chat_template(
+        ids: Any = self.tokenizer.apply_chat_template(
             messages,
             tokenize=True,
             add_generation_prompt=True,
@@ -41,13 +50,12 @@ class llm_model:
             enable_thinking=False,
         )
 
-        output = self.model.generate(
+        output: Any = self.model.generate(
             **ids,
             max_new_tokens=180,
         )
 
-        return  self.tokenizer.decode(
-
-                output.tolist()[0][len(ids["input_ids"][0]) :], skip_special_tokens=True
-            )
-        
+        return cast(str, self.tokenizer.decode(
+            output.tolist()[0][len(ids["input_ids"][0]):],
+            skip_special_tokens=True,
+        ))

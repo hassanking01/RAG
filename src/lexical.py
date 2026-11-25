@@ -1,5 +1,7 @@
-import json, math, re, pickle, tqdm
-import token
+import json
+import math
+import pickle
+import re
 from collections import Counter
 from pathlib import Path
 from .errors import Patherror
@@ -45,8 +47,11 @@ STOPWORDS_EN = [
     "with",
 ]
 
+
 class Tokens:
-    def __init__(self, ids, vocab, tf, idf, docs_length, counter, files_history):
+    def __init__(
+        self, ids, vocab, tf, idf, docs_length, counter, files_history
+    ):
         """Initialize token indexes and document metadata."""
         self.ids: dict[str, list[int]] = ids
         self.docs_length: dict[str, int] = docs_length
@@ -59,7 +64,7 @@ class Tokens:
     @staticmethod
     def _handel_cases(token: str) -> list[str]:
         """Return useful lowercase forms of a token."""
-              
+
         result = []
         result += [token.lower()]
         if "_" in token:
@@ -69,19 +74,19 @@ class Tokens:
             tokens = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", token)
             for item in tokens.lower().split():
                 result += [item]
-        return list(filter(lambda x:x not in STOPWORDS_EN and len(x) > 1 ,result))
+        return list(
+            filter(lambda x: x not in STOPWORDS_EN and len(x) > 1, result)
+        )
 
     @lru_cache(maxsize=1)
     @staticmethod
-    def _get_file_content( file_name: str) -> str:
+    def _get_file_content(file_name: str) -> str:
         """Read a file and return its text."""
         return Path(file_name).read_text()
 
     @classmethod
     def tokenize(cls, save_path: Path) -> Tokens:
         """Build token indexes from saved chunks."""
-
-
         chunks: list[Any] = json.loads(save_path.read_text())
 
         files_history: dict[str, list[str]] = {}
@@ -89,14 +94,15 @@ class Tokens:
         docs_length: dict[str, int] = {}
         vocab: dict[str, int] = {}
         counter = 0
-        tf: dict[str, dict[str, int]] = {}
+        tf: dict[int, dict[str, int]] = {}
         idf: dict[int, float] = {}
 
         for chunk in tqdm(
             chunks,
             desc="indexing tokens",
             colour="#0250f7",
-            ascii=" ▒"):
+            ascii=" ▒",
+        ):
 
             file_name = chunk["file_path"]
             document_id = chunk["id"]
@@ -106,7 +112,7 @@ class Tokens:
                 chunk["last_character_index"]
             ]
             document = (Path(file_name).name + " " + chunk_content)
-        
+
             to_index = Tokens.get_tokens(document)
             count = Counter(to_index)
             length = 0
@@ -127,7 +133,7 @@ class Tokens:
             files_history[file_name] += [document_id]
         N = len(ids)
 
-        for _ , token_id in vocab.items():
+        for _, token_id in vocab.items():
             df = len(tf[token_id])
             idf[token_id] = math.log(1 + (N - df + 0.5) / (df + 0.5))
         return cls(ids, vocab, tf, idf, docs_length, counter, files_history)
@@ -143,14 +149,18 @@ class Tokens:
             for token_id in self.ids[doc]:
                 _ = self.tf[token_id].pop(doc, None)
                 affected_tokens.add(token_id)
-            _  = self.ids.pop(doc, None)
-            _  = self.docs_length.pop(doc, None)
+            _ = self.ids.pop(doc, None)
+            _ = self.docs_length.pop(doc, None)
         return affected_tokens
 
     def modify_tokens(self, file: str, chunks_path: Path) -> set[int]:
         """Update token data for a modified file."""
         chunks = json.loads(chunks_path.read_text())
-        this_file_chunks = { chunk["id"]:chunk for chunk in chunks if chunk["file_path"] == file}        
+        this_file_chunks = {
+            chunk["id"]: chunk
+            for chunk in chunks
+            if chunk["file_path"] == file
+        }
         old_docs = set(self.files_history[file])
         new_docs = set(chunk_id for chunk_id in this_file_chunks)
         to_skip = old_docs & new_docs
@@ -191,11 +201,15 @@ class Tokens:
                 self.ids[doc] += [token_id]
                 self.docs_length[doc] += counter[token]
         return affected_tokens
-                
+
     def add_tokens(self, file: str, chunks_path: Path) -> set[int]:
         """Add token data for a new file."""
         chunks = json.loads(chunks_path.read_text())
-        this_file_chunks = {chunk["id"]:chunk for chunk in chunks if chunk["file_path"] == file}
+        this_file_chunks = {
+            chunk["id"]: chunk
+            for chunk in chunks
+            if chunk["file_path"] == file
+        }
         affected_tokens = set()
         self.files_history.setdefault(file, [])
         for doc in this_file_chunks:
@@ -220,14 +234,15 @@ class Tokens:
                 self.tf[token_id][doc] = counter[token]
                 self.docs_length[doc] += counter[token]
                 self.ids[doc] += [token_id]
-            
         return affected_tokens
 
-    def recalculat_idf(self, affected_tokens: set[int], is_full_idf: bool) -> None:
+    def recalculat_idf(
+        self, affected_tokens: set[int], is_full_idf: bool
+    ) -> None:
         """Recalculate IDF values for affected tokens."""
         N = len(self.ids)
         if is_full_idf:
-            for _ , token_id in self.vocab.items():
+            for _, token_id in self.vocab.items():
                 df = len(self.tf[token_id])
                 self.idf[token_id] = math.log(1 + (N - df + 0.5) / (df + 0.5))
         else:
@@ -245,6 +260,7 @@ class Tokens:
                 continue
             result += Tokens._handel_cases(token)
         return result
+
 
 class BM25:
     def __init__(
@@ -264,7 +280,7 @@ class BM25:
 
     def index(self) -> None:
         """Build and save the BM25 index."""
-        self.tokens= Tokens.tokenize(self.chunks_path)
+        self.tokens = Tokens.tokenize(self.chunks_path)
         self._calculate_avgdl()
         self.save()
 
@@ -272,16 +288,23 @@ class BM25:
         """Update the BM25 index after file changes."""
         self.load()
         affected_tokens = set()
-        full_idf , edited = rec_result
+        full_idf, edited = rec_result
         for file, state in edited.items():
             match state:
                 case Filestatus.DELETED:
                     affected_tokens.update(self.tokens.delete_docs(file))
                 case Filestatus.MODIFIED:
-                    affected_tokens.update(self.tokens.modify_tokens(file, self.chunks_path))
+                    affected_tokens.update(
+                        self.tokens.modify_tokens(file, self.chunks_path)
+                    )
                 case Filestatus.ADDED:
-                    affected_tokens.update(self.tokens.add_tokens(file, self.chunks_path))
-        self.tokens.recalculat_idf(affected_tokens=affected_tokens, is_full_idf=full_idf)
+                    affected_tokens.update(
+                        self.tokens.add_tokens(file, self.chunks_path)
+                    )
+        self.tokens.recalculat_idf(
+            affected_tokens=affected_tokens,
+            is_full_idf=full_idf,
+        )
         self._calculate_avgdl()
         self.save()
 
@@ -291,8 +314,8 @@ class BM25:
             self.save_path.mkdir(parents=True)
         if self.save_path.is_file():
             raise Patherror("the save dir for lexical is dir")
-        with open(self.save_path / "bm52.pkl","wb") as f:
-                pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
+        with open(self.save_path / "bm52.pkl", "wb") as f:
+            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     def load(self) -> None:
         """Load the BM25 index from disk."""
@@ -306,9 +329,9 @@ class BM25:
     @lru_cache
     def _calculate_term_score(self, token_id: int, doc: str) -> float:
         """Calculate a BM25 score for one token and document."""
-        score = 0
+        score: float = 0.0
         D = self.tokens.docs_length[doc]
-        tf_qi = self.tokens.tf[token_id].get(doc)
+        tf_qi = self.tokens.tf[token_id][doc]
         bast = tf_qi * (self.k1 + 1)
         maqam = tf_qi + self.k1 * (1 - self.b + self.b * (D / self.avgdl))
         score = self.tokens.idf[token_id] * (bast / maqam)
@@ -318,21 +341,21 @@ class BM25:
         """Calculate the average indexed document length."""
         doc_lengths = self.tokens.docs_length
         number_of_documents = len(self.tokens.ids)
-        number_of_tokens = sum([doc_lengths[doc] for doc in doc_lengths ])
+        number_of_tokens = sum(doc_lengths[doc] for doc in doc_lengths)
         if number_of_documents > 0:
             self.avgdl = number_of_tokens / number_of_documents
 
     @lru_cache
-    def get_chunks_index(self) -> list[dict[str, Any]]:
+    def get_chunks_index(self) -> dict[str, int]:
         """Map chunk IDs to their positions in the chunk list."""
         chunks = json.loads(self.chunks_path.read_text())
-        return {chunk["id"]:index for index, chunk in enumerate(chunks)}
+        return {chunk["id"]: index for index, chunk in enumerate(chunks)}
 
     def search(self, query: str, k) -> list[int]:
         """Return the top matching chunk positions for a query."""
         tokens = Tokens.get_tokens(query)
         chunks_index = self.get_chunks_index()
-        scores = {}
+        scores: dict[str, float] = {}
         for token in tokens:
             token_id = self.tokens.vocab.get(token, -1)
             if token_id == -1:
@@ -340,5 +363,5 @@ class BM25:
             for doc in self.tokens.tf[token_id]:
                 scores.setdefault(doc, 0.0)
                 scores[doc] += self._calculate_term_score(token_id, doc)
-        scores = nlargest(k, scores, key=lambda x: scores[x])
-        return [chunks_index[idx] for idx in scores]
+        ranked_scores = nlargest(k, scores, key=lambda x: scores[x])
+        return [chunks_index[idx] for idx in ranked_scores]

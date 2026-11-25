@@ -13,6 +13,7 @@ class MinimalSource(BaseModel):
         """Return the source range length."""
         return self.last_character_index - self.first_character_index
 
+
 class UnansweredQuestion(BaseModel):
     question_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     question: str
@@ -31,12 +32,17 @@ class MinimalSearchResults(BaseModel):
     question_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     question: str
     retrieved_sources: List[MinimalSource]
+
     def __str__(self):
         """Return the retrieved source locations as text."""
         result = ""
         for search in self.retrieved_sources:
-            result += f"{search.file_path} [{search.first_character_index}:{search.last_character_index}]\n"
+            result += (
+                f"{search.file_path} [{search.first_character_index}:"
+                f"{search.last_character_index}]\n"
+            )
         return result
+
 
 class MinimalAnswer(MinimalSearchResults):
     answer: str

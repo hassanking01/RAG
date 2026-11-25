@@ -1,23 +1,18 @@
+import ast
 import json
+import re
+from functools import lru_cache
+from hashlib import sha256
 from pathlib import Path
+from typing import Any, cast
+
 from tqdm import tqdm
+
 from .enums import Filestatus, FileType
 from .errors import EmptyData
-from typing import Any
-import re
-from hashlib import sha256
-from functools import lru_cache
-from itertools import accumulate
-import ast
-from pathlib import Path
-from enum import Enum
-from tqdm import tqdm
-import json 
-
 
 
 class Chunker:
-
     def __init__(
         self,
         processed_path: Path,
@@ -29,31 +24,35 @@ class Chunker:
             "txt": FileType.TEXT,
             "md": FileType.MARKDOWN
         }
-        self.lines = []
+        self.lines: list[int] = []
         self.max_chunk_size = 200
         self.buffer: list[ast.stmt] = []
         self.current_file: Path
         self.content: str
 
-
-
     def _file_type(self) -> FileType:
         """Return the type of the current file."""
         extension = self.current_file.name.split(".")[-1]
-        return self.file_map[extension]        
+        return self.file_map[extension]
 
-    def _node_length(self, node: ast.stmt) -> bool:
+    def _node_length(self, node: ast.stmt) -> int:
         """Return the character length of an AST node."""
-        start = self.lines[node.lineno - 1] + node.col_offset
-        end = self.lines[node.end_lineno - 1] + node.end_col_offset
-        return end - start 
+        start = self.lines[cast(int, node.lineno) - 1] + cast(
+            int, node.col_offset
+        )
+        end = self.lines[cast(int, node.end_lineno) - 1] + cast(
+            int, node.end_col_offset
+        )
+        return end - start
 
     def _get_first_buffer(self):
         """Return the starting position of the first buffered node."""
         if not self.buffer:
             return -1
-        line_number = self.buffer[0].lineno - 1
-        return self.lines[line_number] + self.buffer[0].col_offset 
+        line_number = cast(int, self.buffer[0].lineno) - 1
+        return self.lines[line_number] + cast(
+            int, self.buffer[0].col_offset
+        )
 
     @lru_cache(maxsize=1)
     def _get_chunk_contet(self, file: Path) -> str:
@@ -71,19 +70,19 @@ class Chunker:
         if not self.buffer:
             return []
         result = []
-        start_line = self.buffer[0].lineno - 1
-        start_offsit = self.buffer[0].col_offset
-        end_line = self.buffer[-1].end_lineno - 1
-        end_offsit = self.buffer[-1].end_col_offset - 1
+        start_line = cast(int, self.buffer[0].lineno) - 1
+        start_offsit = cast(int, self.buffer[0].col_offset)
+        end_line = cast(int, self.buffer[-1].end_lineno) - 1
+        end_offsit = cast(int, self.buffer[-1].end_col_offset) - 1
         start = self.lines[start_line] + start_offsit
-        end = self.lines[end_line] + end_offsit 
+        end = self.lines[end_line] + end_offsit
         result.extend(self._flush(start, end))
         self.buffer.clear()
         return result
-    
-    def _flush(self, start, end) -> list[dict[str, Any]]:
+
+    def _flush(self, start: int, end: int) -> list[dict[str, Any]]:
         """Create chunk metadata for a character range."""
-        chunk = {}
+        chunk: dict[str, Any] = {}
         chunk_id = self._calculate_hash_id(start, end)
         chunk["id"] = chunk_id
         chunk["file_path"] = str(self.current_file)
@@ -92,13 +91,17 @@ class Chunker:
         chunk["mtime"] = self.current_file.lstat().st_mtime
         return [chunk]
 
-    def _procces_one_node(self, node:ast.stmt) -> list[dict[str, Any]]:
+    def _procces_one_node(self, node: ast.stmt) -> list[dict[str, Any]]:
         """Split a large Python node into chunks."""
         chunks = []
         chunks.extend(self._flush_buffer())
         over_lap = int(self.max_chunk_size * 0.05)
-        end = self.lines[node.end_lineno - 1] + node.end_col_offset
-        start = self.lines[node.lineno - 1] + node.col_offset
+        end = self.lines[cast(int, node.end_lineno) - 1] + cast(
+            int, node.end_col_offset
+        )
+        start = self.lines[cast(int, node.lineno) - 1] + cast(
+            int, node.col_offset
+        )
         new_end = start
         data = self.content[start:].splitlines(keepends=True)
         chunk = ""
@@ -108,17 +111,16 @@ class Chunker:
             if len(line) > self.max_chunk_size:
                 if len(chunk) > 0:
                     new_end = start + len(chunk) - 1
-                    chunks.extend(self._flush( start,new_end))
+                    chunks.extend(self._flush(start, new_end))
                     start = new_end + 1
-                
+
                 for i in range(0, len(line), self.max_chunk_size):
-                    chunk = line[i:i+self.max_chunk_size]
+                    chunk = line[i:i + self.max_chunk_size]
                     new_end += len(chunk)
-                    chunks.extend(self._flush( start, new_end))
-                    start = new_end 
-                
+                    chunks.extend(self._flush(start, new_end))
+                    start = new_end
+
                 continue
-            
             if len(chunk) + len(line) > self.max_chunk_size:
                 new_end = start + len(chunk) - 1
                 chunks.extend(self._flush(start, new_end))
@@ -134,13 +136,11 @@ class Chunker:
 
         if len(chunk) > 0:
             new_end = start + len(chunk) - 1
-            chunks.extend(self._flush( start,new_end))
+            chunks.extend(self._flush(start, new_end))
             start = new_end + 1
-
-
         return chunks
 
-    def _handel_python(self,) -> list[dict[str, Any]]:
+    def _handel_python(self) -> list[dict[str, Any]]:
         """Chunk the current Python file."""
         self.content = self.current_file.read_text()
         if not self.content.strip():
@@ -158,15 +158,17 @@ class Chunker:
                 continue
 
             start = self._get_first_buffer()
-        
-            if start == -1 :
+
+            if start == -1:
                 self.buffer.append(node)
                 continue
-        
-            end = self.lines[node.end_lineno - 1] + node.end_col_offset
+
+            end = self.lines[cast(int, node.end_lineno) - 1] + cast(
+                int, node.end_col_offset
+            )
             if end - start > self.max_chunk_size:
                 chunks.extend(self._flush_buffer())
-                
+
             self.buffer.append(node)
         if len(self.buffer) > 0:
             chunks.extend(self._flush_buffer())
@@ -189,7 +191,9 @@ class Chunker:
                 in_code = not in_code
                 is_header.append(False)
             else:
-                is_header.append(not in_code and re.match(header_pattern, line) is not None)
+                is_header.append(
+                    not in_code and re.match(header_pattern, line) is not None
+                )
 
         chunk = ""
         start = 0
@@ -241,11 +245,11 @@ class Chunker:
             tail = line + tail
         return tail
 
-    def _handel_text(self,) -> list[dict[str, Any]]:
+    def _handel_text(self) -> list[dict[str, Any]]:
         """Chunk the current text file."""
         try:
             content = self.current_file.read_text()
-        except:
+        except BaseException:
             return []
         if not content.strip():
             return []
@@ -263,7 +267,7 @@ class Chunker:
                     start = end + 1
                     chunk = ""
                 for i in range(0, len(line), self.max_chunk_size):
-                    end = start + len(line[i:i+self.max_chunk_size])
+                    end = start + len(line[i:i + self.max_chunk_size])
                     chunks.extend(self._flush(start, end))
                     start = end + 1
                 continue
@@ -281,12 +285,11 @@ class Chunker:
 
         return chunks
 
- 
     def _chunk_file(self, file: Path):
         """Chunk one supported file."""
         try:
             file.read_text()
-        except:
+        except BaseException:
             return []
         chunks = []
         self.current_file = file
@@ -300,13 +303,12 @@ class Chunker:
                 chunks.extend(self._handel_text())
         return chunks
 
-
     def _is_same_chunks_size(self, max_chunk_size: int) -> bool:
         """Check whether the saved chunk size matches the given size."""
         file = self.save_path.parent / ".max_chunk_size"
         try:
             old_max_chunk_size = int(file.read_text())
-        except ValueError, FileNotFoundError:
+        except (ValueError, FileNotFoundError):
             return False
         return old_max_chunk_size == max_chunk_size
 
@@ -319,7 +321,7 @@ class Chunker:
 
         if all(result):
             raise EmptyData(
-                f"all files in raw data folder are empty"
+                "all files in raw data folder are empty"
             )
 
     def _save_max_chunk_size(self, max_chunk_size: int) -> None:
@@ -334,7 +336,7 @@ class Chunker:
             file for file in data_path.rglob("*")
             if file.is_file()
             and self._is_valid_file(file)
-        ] 
+        ]
         self.check_empy_files(files)
 
         all_chunks = []
@@ -343,10 +345,9 @@ class Chunker:
             desc="chunking files",
             colour="#0250f7",
             ascii=" ▒",
-            ):
+        ):
 
             all_chunks += self._chunk_file(file)
-
 
         if not self.save_path.parent.exists():
             self.save_path.parent.mkdir(parents=True)
@@ -364,23 +365,28 @@ class Chunker:
         self.check_empy_files(files)
         with open(self.save_path) as file:
             chunks = json.load(file)
-        old_files = {chunk["file_path"]:chunk["mtime"] for chunk in chunks}
+        old_files = {
+            chunk["file_path"]: chunk["mtime"] for chunk in chunks
+        }
         edited = {}
         for file in tqdm(
             files,
             desc="searching for updated files",
             colour="#0250f7",
-            ascii=" ▒"):
+            ascii=" ▒",
+        ):
             if len(file.read_text().strip()) == 0:
                 continue
             self.current_file = file
             if self._file_type() == FileType.PYTHON:
                 if len(ast.parse(file.read_text()).body) == 0:
                     continue
-            if str(file) not in old_files :
+            if str(file) not in old_files:
                 edited[str(file)] = Filestatus.ADDED
-            elif (str(file) in old_files and
-                  old_files.get(str(file)) != file.lstat().st_mtime):
+            elif (
+                str(file) in old_files
+                and old_files.get(str(file)) != file.lstat().st_mtime
+            ):
                 edited[str(file)] = Filestatus.MODIFIED
             if old_files.get(str(file)):
                 del old_files[str(file)]
@@ -395,10 +401,16 @@ class Chunker:
             edited,
             desc="re_chunking edited files",
             colour="#0250f7",
-            ascii=" ▒"):
-            if edited[file] == Filestatus.ADDED or edited[file] == Filestatus.MODIFIED:
+            ascii=" ▒",
+        ):
+            if (
+                edited[file] == Filestatus.ADDED
+                or edited[file] == Filestatus.MODIFIED
+            ):
                 new_chunks += self._chunk_file(Path(file))
-        filted_chunks = [chunk for chunk in chunks if chunk["file_path"] not in edited]
+        filted_chunks = [
+            chunk for chunk in chunks if chunk["file_path"] not in edited
+        ]
         filted_chunks += new_chunks
         with open(self.save_path, "w") as file:
             json.dump(
@@ -407,9 +419,9 @@ class Chunker:
                 indent=4
             )
         self._save_max_chunk_size(max_chunk_size)
-        return len(filted_chunks) != len(chunks) , edited
-    
-    def _is_valid_file(self, file: Path):
+        return len(filted_chunks) != len(chunks), edited
+
+    def _is_valid_file(self, file: Path) -> bool:
         """Return whether a file extension is supported."""
         file_extension = file.name.split(".")[-1]
         return file_extension in self.file_map
