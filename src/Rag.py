@@ -1,6 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 import json
 
 from pydantic import ValidationError
@@ -16,6 +16,7 @@ from .models import (
     RagDataset,
     StudentSearchResults,
     StudentSearchResultsAndAnswer,
+    AnsweredQuestion
 )
 from .errors import (
     MaxChunkSizeError,
@@ -135,7 +136,22 @@ class RAG:
     ) -> None:
         """Search every question in a dataset and save the results."""
         self.is_semantic_loaded = self._load_semantic()
+        save_directory_path: Path = Path(save_directory)
         _dataset_path = Path(dataset_path)
+        if not _dataset_path.exists():
+            raise Patherror(
+                "dataset you are providing:"
+                f" {_dataset_path} dose not exist"
+                )
+        if _dataset_path.is_dir():
+            raise Patherror(
+                "dataset path you provided is a directory"
+            )
+        if save_directory_path.is_file():
+            raise Patherror(
+                "the save dir you provided is an existing"
+                " file"
+            )
         rag_dataset = RagDataset(**json.loads(_dataset_path.read_text()))
         result: list[MinimalSearchResults] = []
         for Unansweredquestion in tqdm(
@@ -148,7 +164,6 @@ class RAG:
             r.question_id = Unansweredquestion.question_id
             result += [r]
         student_search = StudentSearchResults(k=k, search_results=result)
-        save_directory_path: Path = Path(save_directory)
         if not save_directory_path.exists():
             save_directory_path.mkdir(parents=True, exist_ok=True)
         save_result = save_directory_path / _dataset_path.name
@@ -170,14 +185,27 @@ class RAG:
         context = ""
         for source in minimal_source.retrieved_sources:
             file = Path(source.file_path)
-            file_text = file.read_text()
-            source_text = file_text[
-                source.first_character_index:source.last_character_index
-            ]
+            try:
+                file_text = file.read_text()
+                source_text = file_text[
+                    source.first_character_index:source.last_character_index
+                ]
+            except BaseException:
+                continue
             context += f"- {source_text}\n"
+        if not context:
+            raise ValueError(
+                "all the files are corrapt or the are binary now"
+            )
         answer = model.Generate_answer(query, context)
-
-        print(answer)
+        result: MinimalAnswer = MinimalAnswer(
+            question_id=minimal_source.question_id,
+            question=minimal_source.question,
+            retrieved_sources=minimal_source.retrieved_sources,
+            answer=answer
+        )
+        print(result.model_dump(mode="json"))
+        return result
 
     def _answer(
         self,
@@ -190,11 +218,17 @@ class RAG:
         context = ""
         for source in minimal_source:
             file = Path(source.file_path)
-            file_text = file.read_text()
-            source_text = file_text[
-                source.first_character_index:source.last_character_index
-            ]
-            context += f"- {source_text}\n"
+            try:
+                file_text = file.read_text()
+                source_text = file_text[
+                    source.first_character_index:source.last_character_index
+                ]
+                context += f"- {source_text}\n"
+            except BaseException:
+                raise ValueError(
+                    f"all the files in {question_id} sources"
+                    " are corrapt or they are binary files"
+                )
         answer = model.Generate_answer(query, context)
 
         return MinimalAnswer(
@@ -218,8 +252,16 @@ class RAG:
         """Answer saved search results and write the answers."""
         model = self.model()
         search_results_file = Path(student_search_results_path)
+        try:
+            string_data = search_results_file.read_text()
+            data = json.loads(string_data)
+        except BaseException:
+            raise ValueError(
+                f"the file {student_search_results_path} is "
+                "corrapted or its binary now"
+            )
         student_search_result = StudentSearchResults(
-            **json.loads(search_results_file.read_text())
+            **data
         )
         k = student_search_result.k
         results = []
@@ -248,10 +290,6 @@ class RAG:
                 student_answer_resutl.model_dump(mode="json"), file, indent=4
             )
 
-    # TODO
-    # if question is in student result and not in answer.json raise error
-    # what i do now is wrong fix that
-    # if question is in data set but not in student result its okay
     def load_evaluation_models(
         self,
         _dataset_path: Path,
@@ -317,7 +355,7 @@ class RAG:
 
             for k in recall_k:
                 result = 0
-                sources = cast(Any, qustion).sources
+                sources = cast(AnsweredQuestion, qustion).sources
                 for source in sources:
                     for user_source in questions_map[qustion.question_id][:k]:
                         if source.file_path == user_source.file_path:
@@ -340,6 +378,7 @@ class RAG:
                                 break
                 if len(sources) > 0:
                     recall_k[k] += result / len(sources)
+
         print("🎯 Evaluation Results")
 
         print(f"📊 Questions evaluated: {len(questions_map)}")

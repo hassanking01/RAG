@@ -25,7 +25,10 @@ if "__main__" == __name__:
         dict_funcs = dir(commands)
         not_allowed = list(arg for arg in argv if arg in dict_funcs)
         if not_allowed:
-            print(f"the following arguments are not part of this cli: {not_allowed}")
+            print(
+                "the following arguments are not part of this cli: "
+                f"{not_allowed}"
+            )
             print(f"this is the only funtions allowd {list(commands.keys())}")
             exit()
 
@@ -39,5 +42,6 @@ if "__main__" == __name__:
         EmptyData,
         EvaluationError,
         ValueError,
+        IndexError,
     ) as e:
         print(f"[red]{e.__class__.__name__}[/red]:", e)
