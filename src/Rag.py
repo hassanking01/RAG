@@ -62,7 +62,7 @@ class RAG:
             self.processed_path, self.chunker.save_path
         )
 
-        if not 200 < max_chunk_size <= 2000:
+        if not 200 <= max_chunk_size <= 2000:
             raise MaxChunkSizeError(
                 "max_chunk_size should be between 200 and 2000"
             )

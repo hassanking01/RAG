@@ -4,6 +4,7 @@ if "__main__" == __name__:
         import fire
         from .Rag import RAG
         from rich import print
+        from sys import argv
         from .errors import (
             MaxChunkSizeError,
             Patherror,
@@ -20,6 +21,13 @@ if "__main__" == __name__:
             "answer_dataset": rag.answer_dataset,
             "evaluate": rag.evaluate,
         }
+
+        dict_funcs = dir(commands)
+        not_allowed = list(arg for arg in argv if arg in dict_funcs)
+        if not_allowed:
+            print(f"the following arguments are not part of this cli: {not_allowed}")
+            print(f"this is the only funtions allowd {list(commands.keys())}")
+            exit()
 
         fire.Fire(commands)
 

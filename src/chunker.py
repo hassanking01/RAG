@@ -127,7 +127,7 @@ class Chunker:
                 tail = self._get_overlap(chunk, over_lap)
                 if len(tail) + len(line) > self.max_chunk_size:
                     tail = ""
-                start = end + 1 - len(tail)
+                start = new_end + 1 - len(tail)
                 chunk = tail
                 data = self.content[start:].splitlines(True)
                 chunk = line
@@ -346,7 +346,6 @@ class Chunker:
             colour="#0250f7",
             ascii=" ▒",
         ):
-
             all_chunks += self._chunk_file(file)
 
         if not self.save_path.parent.exists():
