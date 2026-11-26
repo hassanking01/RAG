@@ -149,6 +149,11 @@ class Tokens:
         for doc in docs:
             for token_id in self.ids[doc]:
                 _ = self.tf[token_id].pop(doc, None)
+                if len(self.tf[token_id]) == 0:
+                    for key in self.vocab:
+                        if self.vocab[key] == token_id:
+                            _ = self.vocab.pop(key, None)
+                            break
                 affected_tokens.add(token_id)
             _ = self.ids.pop(doc, None)
             _ = self.docs_length.pop(doc, None)
@@ -174,6 +179,11 @@ class Tokens:
             if doc in to_remove:
                 for token_id in self.ids[doc]:
                     _ = self.tf[token_id].pop(doc, None)
+                    if len(self.tf[token_id]) == 0:
+                        for key in self.vocab:
+                            if self.vocab[key] == token_id:
+                                _ = self.vocab.pop(key, None)
+                                break
                     affected_tokens.add(token_id)
                 _ = self.ids.pop(doc, None)
                 _ = self.docs_length.pop(doc, None)
@@ -259,6 +269,8 @@ class Tokens:
         for token in splited:
             if token.lower() in STOPWORDS_EN or token.isdigit():
                 continue
+            if len(token) == 1:
+                continue
             result += Tokens._handel_cases(token)
         return result
 
@@ -273,7 +285,8 @@ class BM25:
         b: float = 0.75,
     ):
         """Initialize the BM25 index."""
-        self.save_path = processed_path / "lexical"
+        self.save_dir = processed_path / "lexical"
+        self.save_path = self.save_dir / "bm52.pkl"
         self.chunks_path = chunks_path
         self.k1 = k1
         self.b = b
@@ -312,21 +325,33 @@ class BM25:
 
     def save(self):
         """Save the BM25 index to disk."""
-        if not self.save_path.exists():
-            self.save_path.mkdir(parents=True)
-        if self.save_path.is_file():
-            raise Patherror("the save dir for lexical is dir")
-        with open(self.save_path / "bm52.pkl", "wb") as f:
-            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
+        try:
+            if not self.save_dir.exists():
+                self.save_dir.mkdir(parents=True)
+            if self.save_dir.is_file():
+                raise Patherror("the save directory for lexical is a file")
+            with open(self.save_path, "wb") as f:
+                pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
+        except Patherror:
+            raise
+        except Exception:
+            raise Patherror(
+                f"could not save lexical pickle '{self.save_path}'"
+            )
 
     def load(self) -> None:
         """Load the BM25 index from disk."""
-        with open(self.save_path / "bm52.pkl", "rb") as f:
-            bm25 = pickle.load(f)
-        bm25 = cast(BM25, bm25)
-        self.tokens = bm25.tokens
-        self.avgdl = bm25.avgdl
-        self.loaded = True
+        try:
+            with open(self.save_path, "rb") as f:
+                bm25 = pickle.load(f)
+            bm25 = cast(BM25, bm25)
+            self.tokens = bm25.tokens
+            self.avgdl = bm25.avgdl
+            self.loaded = True
+        except Exception:
+            raise Patherror(
+                f"could not load lexical pickle '{self.save_path}'"
+            )
 
     @lru_cache
     def _calculate_term_score(self, token_id: int, doc: str) -> float:

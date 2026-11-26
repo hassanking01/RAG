@@ -49,8 +49,12 @@ class RAG:
 
     def _is_full_indexing(self, max_chunk_size: int) -> bool | None:
         """Return whether a full index must be built."""
+        if self.lexical.save_path.is_dir():
+            raise Patherror("lexical save path is a directory")
+        if self.chunker.save_path.is_dir():
+            raise Patherror("chunk save path is a directory")
         lexical_files = not self.lexical.save_path.exists()
-        semantic_files = not self.semantic.save_path.exists()
+        semantic_files = not self.semantic.is_save_path()
         chunker_files = not self.chunker.save_path.exists()
         same_chunk_size = not self.chunker._is_same_chunks_size(max_chunk_size)
         if lexical_files or semantic_files or chunker_files or same_chunk_size:
@@ -167,8 +171,15 @@ class RAG:
         if not save_directory_path.exists():
             save_directory_path.mkdir(parents=True, exist_ok=True)
         save_result = save_directory_path / _dataset_path.name
-        with open(save_result, "w") as file:
-            json.dump(student_search.model_dump(mode="json"), file, indent=4)
+        try:
+            with open(save_result, "w") as file:
+                json.dump(
+                    student_search.model_dump(mode="json"),
+                    file,
+                    indent=4,
+                )
+        except Exception:
+            raise Patherror("could not save search results")
 
     @lru_cache
     def model(self):
@@ -285,10 +296,15 @@ class RAG:
         if not _save_directory.exists():
             _save_directory.mkdir(parents=True, exist_ok=True)
         save_result = _save_directory / search_results_file.name
-        with open(save_result, "w") as file:
-            json.dump(
-                student_answer_resutl.model_dump(mode="json"), file, indent=4
-            )
+        try:
+            with open(save_result, "w") as file:
+                json.dump(
+                    student_answer_resutl.model_dump(mode="json"),
+                    file,
+                    indent=4,
+                )
+        except Exception:
+            raise Patherror("could not save answered search results")
 
     def load_evaluation_models(
         self,

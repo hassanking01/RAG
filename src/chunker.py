@@ -9,7 +9,7 @@ from typing import Any, cast
 from tqdm import tqdm
 
 from .enums import Filestatus, FileType
-from .errors import EmptyData
+from .errors import EmptyData, Patherror
 
 
 class Chunker:
@@ -114,6 +114,7 @@ class Chunker:
                     new_end = start + len(chunk) - 1
                     chunks.extend(self._flush(start, new_end))
                     start = new_end + 1
+                    chunk = ""
 
                 for i in range(0, len(line), self.max_chunk_size):
                     chunk = line[i:i + self.max_chunk_size]
@@ -143,7 +144,10 @@ class Chunker:
 
     def _handel_python(self) -> list[dict[str, Any]]:
         """Chunk the current Python file."""
-        self.content = self.current_file.read_text()
+        try:
+            self.content = self.current_file.read_text()
+        except BaseException:
+            return []
         if not self.content.strip():
             return []
         tree = ast.parse(self.content)
@@ -178,7 +182,12 @@ class Chunker:
     def _handel_markdown(self):
         """Chunk the current Markdown file."""
         result = []
-        content = self.current_file.read_text()
+        try:
+            content = self.current_file.read_text()
+        except BaseException:
+            return []
+        if len(content.strip()) == 0:
+            return []
         content_lines = content.splitlines(True)
         header_pattern = r"^ {0,3}#{1,6}[ \t]+\S"
         code_pattern = r"^ {0,3}(```|~~~)"
@@ -351,8 +360,11 @@ class Chunker:
 
         if not self.save_path.parent.exists():
             self.save_path.parent.mkdir(parents=True)
-        with open(self.save_path, "w") as file:
-            json.dump(all_chunks, file, indent=4)
+        try:
+            with open(self.save_path, "w") as file:
+                json.dump(all_chunks, file, indent=4)
+        except Exception:
+            raise Patherror("could not save chunks")
         self._save_max_chunk_size(max_chunk_size)
 
     def re_chunk(self, data_path: Path, max_chunk_size: int):
@@ -363,8 +375,11 @@ class Chunker:
             if file.is_file() and self._is_valid_file(file)
         ]
         self.check_empy_files(files)
-        with open(self.save_path) as file:
-            chunks = json.load(file)
+        try:
+            with open(self.save_path) as file:
+                chunks = json.load(file)
+        except Exception:
+            raise Patherror("could not load chunks")
         old_files = {
             chunk["file_path"]: chunk["mtime"] for chunk in chunks
         }
@@ -375,7 +390,10 @@ class Chunker:
             colour="#0250f7",
             ascii=" ▒",
         ):
-            if len(file.read_text().strip()) == 0:
+            try:
+                if len(file.read_text().strip()) == 0:
+                    continue
+            except BaseException:
                 continue
             self.current_file = file
             if self._file_type() == FileType.PYTHON:
@@ -412,12 +430,15 @@ class Chunker:
             chunk for chunk in chunks if chunk["file_path"] not in edited
         ]
         filted_chunks += new_chunks
-        with open(self.save_path, "w") as file:
-            json.dump(
-                filted_chunks,
-                file,
-                indent=4
-            )
+        try:
+            with open(self.save_path, "w") as file:
+                json.dump(
+                    filted_chunks,
+                    file,
+                    indent=4
+                )
+        except Exception:
+            raise Patherror("could not save chunks")
         self._save_max_chunk_size(max_chunk_size)
         return len(filted_chunks) != len(chunks), edited
 

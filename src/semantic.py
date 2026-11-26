@@ -28,6 +28,16 @@ class VectorDb:
         self.metadata: list[list[str]] = []
         self.files_history: dict[str, list[str]] = {}
 
+    def is_save_path(self) -> bool:
+        """Return whether both semantic index files exist."""
+        metadata_path = self.save_path / "metadata.pkl"
+        embeddings_path = self.save_path / "embeddings.npy"
+        if metadata_path.is_dir() or embeddings_path.is_dir():
+            raise Patherror(
+                "semantic index paths must be files, not directories"
+            )
+        return metadata_path.exists() and embeddings_path.exists()
+
     @lru_cache(maxsize=1)
     def get_file_content(self, file: str):
         """Read and return a file's text."""
@@ -87,18 +97,24 @@ class VectorDb:
     def save(self) -> None:
         """Save semantic metadata and embeddings to disk."""
         self.check_save_files()
-        with open(self.save_path / "metadata.pkl", "wb") as f:
-            pickle.dump(
-                (self.files_history, self.metadata),
-                f,
-                protocol=pickle.HIGHEST_PROTOCOL,
-            )
+        try:
+            with open(self.save_path / "metadata.pkl", "wb") as f:
+                pickle.dump(
+                    (self.files_history, self.metadata),
+                    f,
+                    protocol=pickle.HIGHEST_PROTOCOL,
+                )
+        except Exception:
+            raise Patherror("could not save semantic metadata")
         numpy.save(self.save_path / "embeddings.npy", self._embeddings)
 
     def load(self) -> None:
         """Load semantic metadata and embeddings from disk."""
-        with open(self.save_path / "metadata.pkl", "rb") as f:
-            t_metadata = pickle.load(f)
+        try:
+            with open(self.save_path / "metadata.pkl", "rb") as f:
+                t_metadata = pickle.load(f)
+        except Exception:
+            raise Patherror("could not load semantic metadata")
         t_metadata = cast(
             tuple[dict[str, list[str]], list[list[str]]], t_metadata
         )
