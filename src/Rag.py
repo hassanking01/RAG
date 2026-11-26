@@ -202,6 +202,8 @@ class RAG:
                 )
         except Exception:
             raise Patherror("could not save search results")
+        print("don searching the dataset")
+        print(f"result are saved in {save_result}")
 
     @lru_cache
     def model(self):
@@ -209,7 +211,6 @@ class RAG:
         from .LLM import llm_model
 
         return llm_model()
-
 
     def answer(self, query: str, k: int = 10) -> MinimalAnswer:
         """Generate an answer using search results as context."""
@@ -379,6 +380,8 @@ class RAG:
                 )
         except Exception:
             raise Patherror("could not save answered search results")
+        print("done answering dataset")
+        print(f"result are saved in: {save_result}")
 
     def load_evaluation_models(
         self,
@@ -392,6 +395,10 @@ class RAG:
             raise ModelError(
                 f"{_dataset_path.name} is not valid RagDaraset model"
             )
+        except BaseException:
+            raise ValueError(
+                f"cant open {_dataset_path.name} and read it"
+            )
         try:
             student_search_results = StudentSearchResults.model_validate_json(
                 _student_search_results_path.read_text()
@@ -400,6 +407,11 @@ class RAG:
             raise ModelError(
                 f"{_student_search_results_path.name}"
                 " is not valid StudentSearchResults model"
+            )
+        except BaseException:
+            raise ValueError(
+                f"cant open {_student_search_results_path.name}"
+                " and read it"
             )
         return dataset, student_search_results
 
@@ -437,12 +449,12 @@ class RAG:
                     " not found in the dataset"
                 )
 
-        recall_k: dict[int, float] = {1: 0, 3: 0, 5: 0, 10: 0}
-
+        recall_k: dict[int, float] = {1: 0.0, 3: 0.0, 5: 0.0, 10: 0.0}
+        number_of_questions = 0
         for qustion in dataset.rag_questions:
             if qustion.question_id not in questions_map:
                 continue
-
+            number_of_questions += 1
             for k in recall_k:
                 result = 0
                 sources = cast(AnsweredQuestion, qustion).sources
@@ -468,11 +480,16 @@ class RAG:
                                 break
                 if len(sources) > 0:
                     recall_k[k] += result / len(sources)
+        if number_of_questions:
+            for k in recall_k:
+                recall_k[k] /= number_of_questions
 
-        print("🎯 Evaluation Results")
+        print("Evaluation Results")
 
-        print(f"📊 Questions evaluated: {len(questions_map)}")
+        print(f"Questions evaluated: {len(questions_map)}")
         print("=" * 30, "\n")
         for k in recall_k:
-            print(f"📈 Recall@{k}: {recall_k[k]}")
+            print(
+                f"Recall@{k}: {recall_k[k]:.3f} ({recall_k[k]*100:.1f})%"
+                )
         print({f"recall@{k}": recall_k[k] for k in recall_k})

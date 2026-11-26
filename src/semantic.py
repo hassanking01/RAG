@@ -45,22 +45,44 @@ class VectorDb:
 
     def index(self) -> None:
         """Create and save embeddings for all chunks."""
-
-        chunks: list[dict[str, Any]] = json.loads(self.chunks_path.read_text())
+        try:
+            content = self.chunks_path.read_text()
+        except FileNotFoundError:
+            raise Patherror(
+                f"{self.chunks_path} is no where to be found"
+            )
+        except PermissionError:
+            raise Patherror(
+                f"you dont have access to {self.chunks_path}"
+            )
+        try:
+            chunks: list[dict[str, Any]] = json.loads(content)
+        except BaseException:
+            raise ValueError(
+                f"the {self.chunks_path} is not a valid chunks file"
+                " try running index again"
+            )
         documents = []
-        for data in chunks:
-            file_content = self.get_file_content(data["file_path"])
-            documents += [
-                file_content[
-                    data["first_character_index"]:
-                    data["last_character_index"]
+        try:
+            for data in chunks:
+                file_content = self.get_file_content(data["file_path"])
+                documents += [
+                    file_content[
+                        data["first_character_index"]:
+                        data["last_character_index"]
+                    ]
                 ]
-            ]
-            self.metadata += [
-                [data["id"], data["file_path"]]
-            ]
-            self.files_history.setdefault(data["file_path"], [])
-            self.files_history[data["file_path"]] += [data["id"]]
+                self.metadata += [
+                    [data["id"], data["file_path"]]
+                ]
+                self.files_history.setdefault(data["file_path"], [])
+                self.files_history[data["file_path"]] += [data["id"]]
+        except ValueError:
+            raise ValueError(
+                f"the {self.chunks_path} is not a valid chunks file"
+                " try running index again"
+            )
+
         self._embeddings = self.model.encode(documents, show_progress_bar=True)
         self.save()
 
@@ -127,7 +149,23 @@ class VectorDb:
         self, file: str = ""
     ) -> dict[str, dict[str, Any]]:
         """Return saved chunks, optionally filtered by file."""
-        chunks = json.loads(self.chunks_path.read_text())
+        try:
+            content = self.chunks_path.read_text()
+        except FileNotFoundError:
+            raise Patherror(
+                f"{self.chunks_path} is no where to be found"
+            )
+        except PermissionError:
+            raise Patherror(
+                f"you dont have access to {self.chunks_path}"
+            )
+        try:
+            chunks: list[dict[str, Any]] = json.loads(content)
+        except BaseException:
+            raise ValueError(
+                f"the {self.chunks_path} is not a valid chunks file"
+                " try running index again"
+            )
         if not file:
             return {chunk["id"]: chunk for chunk in chunks}
         else:

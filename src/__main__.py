@@ -23,7 +23,7 @@ if "__main__" == __name__:
         }
 
         dict_funcs = dir(commands)
-        not_allowed = list(arg for arg in argv if arg in dict_funcs)
+        not_allowed = list(arg for arg in argv[1:] if arg in dict_funcs)
         if not_allowed:
             print(
                 "the following arguments are not part of this cli: "

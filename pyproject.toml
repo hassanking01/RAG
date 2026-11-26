@@ -8,16 +8,12 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
-    "arcade>=3.3.3",
-    "bm25s>=0.3.11",
     "fastapi[standard]>=0.162.0",
     "fire>=0.7.1",
     "flake8",
-    "langchain-text-splitters>=1.1.2",
     "mypy>=2.4.1",
     "numpy>=2.5.3",
     "pydantic>=2.13.5",
-    "pymilvus>=3.0.2",
     "rich>=15.0.0",
     "scikit-learn>=1.9.1",
     "sentence-transformers>=6.1.0",
