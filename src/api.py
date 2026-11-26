@@ -24,6 +24,6 @@ if __name__ == "__main__":
         server = uvicorn.Server(config)
         server.run()
     except KeyboardInterrupt:
-        pass
+        print("closing server...")
     except BaseException as e:
         print(e)

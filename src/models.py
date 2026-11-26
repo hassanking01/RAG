@@ -1,6 +1,6 @@
 import uuid
-from typing import List
-
+from typing import Any, List
+from rich import print
 from pydantic import BaseModel, Field
 
 
@@ -38,7 +38,7 @@ class MinimalSearchResults(BaseModel):
     question: str
     retrieved_sources: List[MinimalSource]
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return the retrieved source locations as text."""
         result = ""
         for search in self.retrieved_sources:
@@ -48,11 +48,22 @@ class MinimalSearchResults(BaseModel):
             )
         return result
 
+    def __rich__(self) -> str:
+        """Return the retrieved source locations as text .
+        for print function
+        """
+        return str(self)
+
 
 class MinimalAnswer(MinimalSearchResults):
     """Represent retrieved sources together with a generated answer."""
     answer: str
 
+    def __str__(self) -> str:
+        return f"{self.model_dump(mode="json")}"
+
+    def __rich__(self) -> dict[str, Any]:
+        return self.model_dump(mode="json")
 
 class StudentSearchResults(BaseModel):
     """Represent retrieval results for a complete student search."""

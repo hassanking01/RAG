@@ -1,6 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 import json
 
 from pydantic import ValidationError
@@ -41,6 +41,7 @@ class RAG:
 
         self.raw_path = Path("data/raw")
         self.processed_path = Path("data/processed")
+        self.cache = self.processed_path / "cache/cache.json"
         if not self.processed_path.exists():
             self.processed_path.mkdir(parents=True, exist_ok=True)
         self.chunker = Chunker(self.processed_path)
@@ -60,6 +61,27 @@ class RAG:
         if lexical_files or semantic_files or chunker_files or same_chunk_size:
             return True
         return False
+
+    def load_cache(self) -> dict[str, dict[str, Any]]:
+        if not self.cache.parent.exists():
+            self.cache.parent.mkdir(parents=True, exist_ok=True)
+        if not self.cache.exists():
+            return {}
+        try:
+            with open(self.cache) as file:
+                data = json.load(file)
+        except PermissionError:
+            raise Patherror(
+                " you dont have read error for "
+                f"{self.cache} file"
+            )
+        except BaseException:
+            raise ValueError(
+                "the cache file is corrapted"
+                " not valid json file"
+            )
+
+        return data
 
     def index(self, max_chunk_size: int = 2000):
         """Build a new index or update the existing one."""
@@ -188,9 +210,26 @@ class RAG:
 
         return llm_model()
 
-    @lru_cache
-    def answer(self, query: str, k: int = 10):
+
+    def answer(self, query: str, k: int = 10) -> MinimalAnswer:
         """Generate an answer using search results as context."""
+        try:
+            k = int(k)
+        except ValueError:
+            raise ValueError(
+                f"invalid k data type expected int got {type(k)}"
+            )
+        cache = self.load_cache()
+        key = f"{query.strip().lower()}-k={k}"
+        if key in cache:
+            try:
+                cache_result = MinimalAnswer.model_validate(cache[key])
+            except ValidationError:
+                raise ValueError(
+                    "the cached question:"
+                    f" {key[0]} has corrupted data"
+                )
+            return cache_result
         model = self.model()
         minimal_source: MinimalSearchResults = self.search(query, k)
         context = ""
@@ -215,7 +254,17 @@ class RAG:
             retrieved_sources=minimal_source.retrieved_sources,
             answer=answer
         )
-        print(result.model_dump(mode="json"))
+        cache[key] = result.model_dump(mode="json")
+
+        with open(self.cache, "w") as f:
+            json.dump(cache, f)
+        try:
+            pass
+        except BaseException:
+            raise ValueError(
+                " corrupted cache file"
+                f" {self.cache}"
+            )
         return result
 
     def _answer(
@@ -276,12 +325,26 @@ class RAG:
         )
         k = student_search_result.k
         results = []
+        cache = self.load_cache()
         for Unanswerd_question in tqdm(
             student_search_result.search_results,
             desc="answering data set",
             colour="#0250f7",
             ascii=" ▒",
         ):
+            key = f"{Unanswerd_question.question.strip().lower()}?-k={k}"
+            if key in cache:
+                try:
+                    answer = MinimalAnswer.model_validate(cache[key])
+                    results.append(answer)
+                except ValidationError:
+                    raise ValueError(
+                        " one of the question:"
+                        f" {key[0]} has corrupted MinimalAnswer data"
+                        " try to remove the cache and try again"
+                    )
+                continue
+
             question_answer = self._answer(
                 Unanswerd_question.question_id,
                 Unanswerd_question.question,
@@ -289,6 +352,7 @@ class RAG:
                 model,
             )
             results.append(question_answer)
+            cache[key] = question_answer.model_dump(mode="json")
         student_answer_resutl = StudentSearchResultsAndAnswer(
             search_results=results, k=k
         )
@@ -296,6 +360,16 @@ class RAG:
         if not _save_directory.exists():
             _save_directory.mkdir(parents=True, exist_ok=True)
         save_result = _save_directory / search_results_file.name
+
+        try:
+            with open(self.cache, "w") as file:
+                json.dump(cache, file)
+        except BaseException:
+            raise ValueError(
+                " corrupted cache file"
+                f" {self.cache}"
+            )
+
         try:
             with open(save_result, "w") as file:
                 json.dump(

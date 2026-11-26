@@ -32,7 +32,9 @@ if "__main__" == __name__:
             print(f"this is the only funtions allowd {list(commands.keys())}")
             exit()
 
-        fire.Fire(commands)
+        result = fire.Fire(commands, serialize=lambda _: None)
+        if result:
+            print(result)
 
     except KeyboardInterrupt:
         print("good bye")
